@@ -235,7 +235,7 @@ S6 decisions are recorded with its contract in `docs/handoffs/S6_HANDOFF.md`.
   - `JSON_FORMATS.md`, every JSON document with all enum values;
   - `examples/qt-quick`, a Qt 6 QML application with a `QML_ELEMENT` controller, worker thread, progress, cancellation, editable titles, writing the new PDF, and a headless `--selftest` mode.
 
-  CI installs the SDK from its `dev` build, installs Qt 6.11.2 (`jurplel/install-qt-action`, pinned to a commit), builds the example against the installed SDK, and runs the self-test.
+  CI installs the SDK from its `dev` build, installs Qt 6.9.3 (`jurplel/install-qt-action`, pinned to a commit), builds the example against the installed SDK, and runs the self-test.
 - **Why:**
   - The owner will build a Qt Quick front end and wants agents working on it to have the right documentation bundled.
   - Client agents need how-to-use rules, not the library's internal design. `AGENTS.md` (root), the handoffs and this log would mislead them, so they are not shipped.
@@ -243,7 +243,8 @@ S6 decisions are recorded with its contract in `docs/handoffs/S6_HANDOFF.md`.
   - Building the example in CI against the *installed* package proves the package works for a real Qt project, which a build-tree test cannot. The example is Debug, like a Qt Creator default, and it runs headless in the same job, so it adds only a few minutes and no second build of the library.
 - **Assumptions:**
   - Qt clients use the MSVC 64-bit Qt kit (a C++ API requirement, E-19/E-20).
-  - Qt 6.11.2 `win64_msvc2022_64` binaries are compatible with the Visual Studio 2026 compiler (same MSVC v14x ABI).
+  - Qt `win64_msvc2022_64` binaries are compatible with the Visual Studio 2026 compiler (same MSVC v14x ABI).
+  - **Amended the same day:** the first CI run used Qt 6.11.2 and failed. aqtinstall 3.3.0, the newest release (June 2025), lists 6.11.2 but cannot download it, because Qt's online repository moved 6.10 and later out of the layout it reads (`qtsdkrepository/windows_x86/desktop/` ends at `qt6_693`). CI therefore uses **Qt 6.9.3**, the newest version aqtinstall can install. The example needs only Qt 6.5 or newer, so clients may use 6.10/6.11. Move CI to a newer Qt when aqtinstall supports the new layout.
   - The SDK installed from the `dev` build contains test hooks. That only matters in CI; released SDKs come from the `release` and `sdk-debug` presets without hooks.
   - The example was not compiled locally, because Qt is not installed on the development PC and was deliberately not downloaded. CI is its only build verification.
 

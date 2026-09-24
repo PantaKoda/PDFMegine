@@ -70,7 +70,7 @@ jobs:
       - name: Qt for the Qt Quick example
         uses: jurplel/install-qt-action@a9c63c7c123f3069cff414e7e482d95dfa9d8125  # v4.4.1
         with:
-          version: '6.11.2'
+          version: '6.9.3'   # newest aqtinstall can fetch; see E-29
           arch: win64_msvc2022_64
           cache: true
 

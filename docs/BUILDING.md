@@ -142,7 +142,7 @@ Clients use `find_package(pdfbookmark 0.1 CONFIG REQUIRED)`, link `pdfbookmark::
 
 | Workflow | Runs when | Does |
 | --- | --- | --- |
-| `.github/workflows/ci.yml` | Every push to `main` and every pull request, except documentation-only changes; also manually | `dev` preset: configure, build, all tests (except `golden_parity`, which needs the local-only `golden/`). Then it installs the SDK from that build, installs Qt 6.11.2, builds `examples/qt-quick` against the installed SDK, and runs its `--selftest` |
+| `.github/workflows/ci.yml` | Every push to `main` and every pull request, except documentation-only changes; also manually | `dev` preset: configure, build, all tests (except `golden_parity`, which needs the local-only `golden/`). Then it installs the SDK from that build, installs Qt 6.9.3, builds `examples/qt-quick` against the installed SDK, and runs its `--selftest` |
 | `.github/workflows/release.yml` | A pushed tag `vX.Y.Z`; also manually as a dry run | Builds both packages exactly as in §4-5, smoke-tests the CLI with a Windows-only PATH, then publishes a GitHub Release with the two ZIPs. A manual run keeps them as 1-day workflow artifacts instead. |
 
 - **Runner:** `windows-2025-vs2026`, which has Visual Studio 2026, the same as local development.
