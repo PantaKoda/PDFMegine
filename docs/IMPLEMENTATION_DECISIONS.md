@@ -211,3 +211,19 @@ S6 decisions are recorded with its contract in `docs/handoffs/S6_HANDOFF.md`.
   - Git on this machine converts line endings (`core.autocrlf=true`), and the generated test PDFs are ASCII-only, so Git would treat them as text. Converting their LF to CRLF on checkout would shift every byte offset in the PDF (the cross-reference table) and change their recorded SHA-256 digests.
   - `cmd.exe` mis-parses batch labels in files with LF line endings.
 - **Assumptions:** no test compares a text file (source, JSON, CMake) byte for byte across line-ending styles. A fresh clone's full test run checks this.
+
+### E-28 GitHub Actions CI and release workflow (24 Sep 2026)
+
+- **Change:**
+  - `ci.yml` builds the `dev` preset and runs all tests on `windows-2025-vs2026` for pushes to `main`, pull requests, and on demand.
+  - `release.yml` builds both packages on a `vX.Y.Z` tag, smoke-tests the packaged CLI, and publishes a GitHub Release. A manual run is a dry run that keeps the ZIPs as 1-day artifacts.
+- **Why:** the owner asked for CI/CD that produces the libraries and packages. It also proves that every commit builds from a clean machine, which a developer PC cannot show.
+  - Windows only: the pinned dependencies exist only for Windows x64 so far. Linux and macOS jobs come with the port.
+  - Documentation-only pushes skip CI, and a newer push cancels an older run, because the private repository's free minutes are limited (Windows counts double).
+  - The runner with Visual Studio 2026 matches local builds, so `/W4 /WX` sees the same compiler warnings.
+  - The only third-party action, `ilammy/msvc-dev-cmd` (sets up the MSVC environment), is pinned to a full commit SHA, so a moved tag cannot change what runs. GitHub's own actions use major-version tags.
+  - Release ZIPs go to GitHub Releases, not workflow artifacts. Private repositories get only 500 MB of artifact storage, and the two ZIPs take about 330 MB.
+- **Assumptions:**
+  - The runner label `windows-2025-vs2026` keeps existing, with Visual Studio 2026.
+  - The workflow `GITHUB_TOKEN` can read this repository's release assets (true for `contents: read`).
+  - The tag is the release trigger, and `PDFBOOKMARK_VERSION` in `CMakeLists.txt` stays the single source of the version number. The workflow fails if they differ.

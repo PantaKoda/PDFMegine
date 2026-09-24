@@ -137,3 +137,27 @@ Clients use `find_package(pdfbookmark 0.1 CONFIG REQUIRED)`, link `pdfbookmark::
   - `text/CMakeLists.txt` is a 3-line compatibility entry for existing S1 build scripts.
   - The OCR package's C API is its public ABI.
 - **Not in Git** (`.gitignore`): build output (`out/`, `dist/`), IDE state (`.vs/`), downloads (`.deps/`, `models/`), and the local-only OCR reference material (`golden/`, `PaddleOCR/`, `.venv/`).
+
+## 7. Continuous integration and releases (GitHub Actions)
+
+| Workflow | Runs when | Does |
+| --- | --- | --- |
+| `.github/workflows/ci.yml` | Every push to `main` and every pull request, except documentation-only changes; also manually | `dev` preset: configure, build, all tests (except `golden_parity`, which needs the local-only `golden/`) |
+| `.github/workflows/release.yml` | A pushed tag `vX.Y.Z`; also manually as a dry run | Builds both packages exactly as in §4-5, smoke-tests the CLI with a Windows-only PATH, then publishes a GitHub Release with the two ZIPs. A manual run keeps them as 1-day workflow artifacts instead. |
+
+- **Runner:** `windows-2025-vs2026`, which has Visual Studio 2026, the same as local development.
+- **Caching:** pinned downloads (`.deps/downloads`) and vcpkg binaries (qpdf) are cached. Both cache keys change when a pin changes.
+- **Credentials:** the OCR models are fetched with the workflow's own `GITHUB_TOKEN` (read access to this repository's releases), so no secrets need to be configured.
+- **Minutes:** the repository is private, so runs count against the account's free Actions minutes, and Windows minutes count double. A newer push cancels an older run of the same branch.
+
+**To publish a release:**
+1. Set `PDFBOOKMARK_VERSION` in `CMakeLists.txt`.
+2. Commit.
+3. Push a tag with the same number:
+
+```powershell
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The workflow refuses a tag that doesn't match `PDFBOOKMARK_VERSION`.

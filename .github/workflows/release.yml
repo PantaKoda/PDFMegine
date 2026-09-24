@@ -1,0 +1,118 @@
+# Release packages: the end-user ZIP and the SDK ZIP (docs/BUILDING.md §4-5).
+#   - Push a tag vX.Y.Z (equal to PDFBOOKMARK_VERSION in CMakeLists.txt) to
+#     publish both ZIPs as a GitHub Release.
+#   - Run manually (workflow_dispatch) for a dry run: same build and checks,
+#     ZIPs kept as short-lived workflow artifacts instead of a release.
+# Decision E-28.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write   # create the release (tag builds only use it)
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    name: Windows x64 packages
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}\.vcpkg-cache
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: MSVC x64 developer environment
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756  # v1.13.0
+        with:
+          arch: x64
+
+      - name: vcpkg location and binary cache
+        shell: pwsh
+        run: |
+          if (-not $env:VCPKG_ROOT) { "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" >> $env:GITHUB_ENV }
+          New-Item -ItemType Directory -Force $env:VCPKG_DEFAULT_BINARY_CACHE | Out-Null
+
+      - name: Cache pinned downloads
+        uses: actions/cache@v6
+        with:
+          path: .deps/downloads
+          key: deps-${{ hashFiles('cmake/PdfbookmarkDependencies.cmake') }}
+
+      - name: Cache vcpkg binaries
+        uses: actions/cache@v6
+        with:
+          path: .vcpkg-cache
+          key: vcpkg-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+
+      - name: Configure Release
+        run: cmake --preset release
+      - name: Build Release (CLI and library)
+        run: cmake --build --preset release --target pdfbookmarkCli pdfbookmark
+      - name: Configure SDK Debug half
+        run: cmake --preset sdk-debug
+      - name: Build SDK Debug half
+        run: cmake --build --preset sdk-debug
+
+      - name: Version
+        id: version
+        shell: pwsh
+        run: |
+          $line = cmake -N -L out/build/release | Select-String '^PDFBOOKMARK_VERSION:STRING=(.+)$'
+          $version = $line.Matches[0].Groups[1].Value
+          "version=$version" >> $env:GITHUB_OUTPUT
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "v$version") {
+            throw "Tag $env:GITHUB_REF_NAME does not match PDFBOOKMARK_VERSION $version (CMakeLists.txt)"
+          }
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $v = '${{ steps.version.outputs.version }}'
+          New-Item -ItemType Directory -Force dist | Out-Null
+          cmake --install out/build/release --component app --prefix dist/pdfbookmark
+          cpack --config out/build/release/CPackConfig.cmake
+          Copy-Item "out/build/release/package/pdfbookmark-$v-win64.zip" dist/
+          cmake --install out/build/release   --component sdk --prefix "out/sdk/pdfbookmark-$v-win64"
+          cmake --install out/build/sdk-debug --component sdk --prefix "out/sdk/pdfbookmark-$v-win64"
+          Push-Location out/sdk
+          cmake -E tar cf "../../dist/pdfbookmark-sdk-$v-win64.zip" --format=zip "pdfbookmark-$v-win64"
+          Pop-Location
+          Get-ChildItem dist/*.zip | Format-Table Name, Length
+
+      - name: Smoke test the packaged CLI (Windows-only PATH)
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
+          New-Item -ItemType Directory -Force out/smoke | Out-Null
+          Copy-Item tests/engine/fixtures/boundary.pdf out/smoke/book.pdf
+          dist/pdfbookmark/pdfbookmark.exe --version
+          dist/pdfbookmark/pdfbookmark.exe add out/smoke/book.pdf --output out/smoke/bookmarked.pdf
+
+      - name: Publish GitHub Release (tag builds)
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $v = '${{ steps.version.outputs.version }}'
+          gh release create $env:GITHUB_REF_NAME `
+            "dist/pdfbookmark-$v-win64.zip" "dist/pdfbookmark-sdk-$v-win64.zip" `
+            --title "PDF Bookmark $v" --generate-notes `
+            --notes "Windows x64. pdfbookmark-$v-win64.zip: the command-line program (see README.txt inside). pdfbookmark-sdk-$v-win64.zip: the library SDK (docs/API.md)."
+
+      - name: Keep the ZIPs (dry runs)
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v7
+        with:
+          name: packages
+          path: dist/*.zip
+          retention-days: 1

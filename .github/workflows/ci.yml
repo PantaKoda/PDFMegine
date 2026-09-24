@@ -1,0 +1,72 @@
+# Continuous integration: build everything and run every test on Windows x64
+# with the same preset developers use (docs/BUILDING.md). Decision E-28.
+name: CI
+
+on:
+  push:
+    branches: [main]
+    # Documentation-only changes don't need a 20-minute build.
+    paths-ignore: ['**.md', 'docs/**', 'packaging/README.txt', 'LICENSE*']
+  pull_request:
+    paths-ignore: ['**.md', 'docs/**', 'packaging/README.txt', 'LICENSE*']
+  workflow_dispatch:
+
+permissions:
+  contents: read   # checkout, and the OCR models on this repo's release
+
+concurrency:
+  # A newer push to the same branch cancels the older run (saves minutes).
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: Windows x64 · dev preset · all tests
+    runs-on: windows-2025-vs2026   # Visual Studio 2026, as used locally
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}   # model download from the private release
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}\.vcpkg-cache
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: MSVC x64 developer environment
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756  # v1.13.0
+        with:
+          arch: x64
+
+      - name: vcpkg location and binary cache
+        shell: pwsh
+        run: |
+          if (-not $env:VCPKG_ROOT) { "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" >> $env:GITHUB_ENV }
+          New-Item -ItemType Directory -Force $env:VCPKG_DEFAULT_BINARY_CACHE | Out-Null
+
+      - name: Cache pinned downloads (PDFium, ONNX Runtime, OpenCV, models)
+        uses: actions/cache@v6
+        with:
+          path: .deps/downloads
+          key: deps-${{ hashFiles('cmake/PdfbookmarkDependencies.cmake') }}
+
+      - name: Cache vcpkg binaries (qpdf)
+        uses: actions/cache@v6
+        with:
+          path: .vcpkg-cache
+          key: vcpkg-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+
+      - name: Configure
+        run: cmake --preset dev
+
+      - name: Build
+        run: cmake --build --preset dev
+
+      - name: Test
+        run: ctest --preset dev
+
+      - name: Keep the test log on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-log
+          path: out/build/dev/Testing/Temporary/LastTest.log
+          retention-days: 7
+          if-no-files-found: ignore
