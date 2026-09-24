@@ -41,7 +41,7 @@ The SDK folder layout:
 | `bin/debug/` | The Debug runtime dependencies |
 | `share/pdfbookmark/models/` | OCR models (needed only for scanned pages) |
 | `lib/cmake/pdfbookmark/` | CMake package, version file and deploy helper |
-| `share/doc/pdfbookmark/` | This guide, examples (`examples/basic` in C++, `examples/python`) and licence notices |
+| `share/doc/pdfbookmark/` | This guide, `JSON_FORMATS.md`, `AGENTS.md` (a brief for coding agents working on client projects), the examples (`basic` in C++, `qt-quick` for Qt 6 QML, `python`) and licence notices |
 
 **Compatibility.**
 - **C API:** plain C types only, so any compiler (MSVC, clang, MinGW) and any language with a C FFI can use it. Debug and Release clients can both use the Release `pdfbookmark.dll`.
@@ -49,6 +49,8 @@ The SDK folder layout:
   - build C++ clients with **MSVC x64** and **C++17 or later**, using the dynamic runtime (`/MD`, `/MDd`), which is the CMake and Qt default;
   - **Debug** clients link `pdfbookmarkd`, and Release, RelWithDebInfo and MinSizeRel clients link `pdfbookmark`. CMake selects the right one automatically.
   - For Qt 6, use Qt's "MSVC 2022 64-bit" kit.
+
+**Qt Quick:** `examples/qt-quick` is a complete application. It shows the CMake setup, a `QML_ELEMENT` controller that runs the library on a worker thread, progress and cancellation, editable bookmark titles, and writing the new PDF. CI builds it against the installed SDK and runs it headless (`--selftest`).
 
 The backends (PDFium, qpdf, ONNX Runtime, OpenCV) are private. No backend header or type appears in the API, and clients never link them directly.
 
@@ -144,7 +146,7 @@ auto text = pdfbookmark::extract_text(pdf, std::vector<PageIndex>{0, 1, 2}, Text
 This returns positioned text regions per page, with the source (PDF text or OCR) and quality assessment.
 
 ### JSON
-`text_report_json`, `analysis_report_json`, `metadata_report_json` and `plan_to_json` produce schema-versioned JSON (`schema_version: 1`, `page_index_base: 0`), the same formats the CLI writes.
+`text_report_json`, `analysis_report_json`, `metadata_report_json` and `plan_to_json` produce schema-versioned JSON (`schema_version: 1`, `page_index_base: 0`), the same formats the CLI writes. Every member and enum value is listed in `JSON_FORMATS.md`.
 
 ## 4. C API
 
@@ -152,7 +154,7 @@ This returns positioned text regions per page, with the source (PDF text or OCR)
 - **Status codes.** Every operation returns a `pdfb_status`: `PDFB_OK` (0) or an error such as `PDFB_OUTPUT_EXISTS`. The numbers never change. `pdfb_status_name()` gives a stable name, and `pdfb_last_error()` gives the message for the calling thread.
 - **Strings** are UTF-8, including file paths on Windows.
 - **Options** are a JSON object text, or `NULL` for the defaults. Unknown keys are rejected, so a typo is an error, not a silently ignored option.
-- **Results** are JSON text returned through `char** out` parameters, in the same formats the CLI writes. Free each one with `pdfb_free()`. On failure, outputs are `NULL`.
+- **Results** are JSON text returned through `char** out` parameters, in the same formats the CLI writes (reference: `JSON_FORMATS.md`). Free each one with `pdfb_free()`. On failure, outputs are `NULL`.
 - **Cancellation:** create a `pdfb_cancel_token` and call `pdfb_cancel_token_cancel()` from any thread. **Progress:** an optional callback, `(user_data, stage, done, total)`.
 
 | Function | Does | Options (JSON keys) |

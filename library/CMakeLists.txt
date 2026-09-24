@@ -149,6 +149,11 @@ if(PDFBOOKMARK_TEXT_WITH_OCR)
     "\"$<TARGET_FILE_DIR:ONNXRuntime::ONNXRuntime>\" \"$<TARGET_FILE_DIR:opencv_world>\"")
 endif()
 set(_runtime_code [[
+  # Normalise paths before the exclude regexes (CMake 4.x policy; the
+  # case-insensitive system32 patterns match either way). Silences CMP0207.
+  if(POLICY CMP0207)
+    cmake_policy(SET CMP0207 NEW)
+  endif()
   if(CMAKE_INSTALL_CONFIG_NAME STREQUAL "Debug")
     set(_dest "${CMAKE_INSTALL_PREFIX}/bin/debug")
   else()
@@ -193,9 +198,13 @@ if(PDFBOOKMARK_TEXT_WITH_OCR)
   install(FILES "${_root}/models/rec/inference.onnx" "${_root}/models/rec/charset.txt"
     DESTINATION "${CMAKE_INSTALL_DATADIR}/pdfbookmark/models/rec" COMPONENT ${_sdk})
 endif()
-install(FILES "${_root}/docs/API.md"
+# Client documentation: the guide, the JSON reference, and the brief for
+# coding agents working on client projects (installed as AGENTS.md).
+install(FILES "${_root}/docs/API.md" "${_root}/docs/JSON_FORMATS.md"
   DESTINATION "${CMAKE_INSTALL_DATADIR}/doc/pdfbookmark" COMPONENT ${_sdk})
-install(DIRECTORY "${_root}/examples/basic" "${_root}/examples/python"
+install(FILES "${_root}/docs/AGENTS_SDK.md" RENAME AGENTS.md
+  DESTINATION "${CMAKE_INSTALL_DATADIR}/doc/pdfbookmark" COMPONENT ${_sdk})
+install(DIRECTORY "${_root}/examples/basic" "${_root}/examples/python" "${_root}/examples/qt-quick"
   DESTINATION "${CMAKE_INSTALL_DATADIR}/doc/pdfbookmark/examples" COMPONENT ${_sdk}
   PATTERN "__pycache__" EXCLUDE)
 get_filename_component(_vcpkg_share "${qpdf_DIR}/.." ABSOLUTE)

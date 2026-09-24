@@ -62,6 +62,35 @@ jobs:
       - name: Test
         run: ctest --preset dev
 
+      # The SDK as a client sees it: install it, then build and run the Qt Quick
+      # example against the installed package (Debug, like a Qt Creator default).
+      - name: Install the SDK from this build
+        run: cmake --install out/build/dev --component sdk --prefix out/sdk
+
+      - name: Qt for the Qt Quick example
+        uses: jurplel/install-qt-action@a9c63c7c123f3069cff414e7e482d95dfa9d8125  # v4.4.1
+        with:
+          version: '6.11.2'
+          arch: win64_msvc2022_64
+          cache: true
+
+      - name: Build the Qt Quick example against the installed SDK
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          cmake -S examples/qt-quick -B out/qt-example -G Ninja -DCMAKE_BUILD_TYPE=Debug `
+            "-DCMAKE_PREFIX_PATH=$env:QT_ROOT_DIR;${{ github.workspace }}/out/sdk"
+          cmake --build out/qt-example
+
+      - name: Run the Qt Quick example's self-test
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          New-Item -ItemType Directory -Force out/qt-smoke | Out-Null
+          Copy-Item tests/engine/fixtures/boundary.pdf out/qt-smoke/book.pdf
+          out/qt-example/pdfbookmark_qt_example.exe --selftest out/qt-smoke/book.pdf
+          if (-not (Test-Path "out/qt-smoke/book (bookmarked).pdf")) { throw "no output PDF" }
+
       - name: Keep the test log on failure
         if: failure()
         uses: actions/upload-artifact@v7

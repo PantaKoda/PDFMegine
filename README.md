@@ -7,7 +7,7 @@ It is a C++ library with a command-line tool as one of its clients:
 | You want to… | Use | Read |
 | --- | --- | --- |
 | Bookmark PDFs (no programming) | `pdfbookmark` command or drag-and-drop scripts from the release ZIP | `packaging/README.txt` |
-| Use it from C++ (e.g. a Qt app) | `<pdfbookmark/pdfbookmark.hpp>` from the SDK | `docs/API.md` |
+| Use it from C++ (e.g. a Qt app) | `<pdfbookmark/pdfbookmark.hpp>` from the SDK | `docs/API.md`, `examples/qt-quick` |
 | Use it from C, Python, C#, Rust… | `<pdfbookmark/pdfbookmark.h>` (C API) | `docs/API.md` §4-5 |
 | Build, test or package it | CMake presets | `docs/BUILDING.md` |
 | Understand or change the design | Five subsystems plus Engine | `docs/ARCHITECTURE.md`, `AGENTS.md` |
@@ -41,7 +41,7 @@ apps/cli/              the pdfbookmark command-line tool
 library/               the unified shared library and its SDK package
 subsystems/            standalone build entry points, one per subsystem
 tests/                 tests and generated fixture PDFs, one folder per subsystem
-examples/              SDK clients: basic (C++), python (C API via ctypes)
+examples/              SDK clients: basic (C++), qt-quick (Qt 6 QML app), python (C API via ctypes)
 packaging/             end-user scripts and guide shipped in the release ZIP
 cmake/                 pinned dependencies, package configuration, helpers
 include/ocr/, src/*.cpp, tools/, corpus/, third_party/
@@ -54,6 +54,8 @@ docs/                  all documentation (below)
 | Document | Contents |
 | --- | --- |
 | `docs/API.md` | Library guide: C++ API, C API, Python, SDK use, conventions, versioning |
+| `docs/JSON_FORMATS.md` | Every JSON document (reports, plans, C API results) and all enum values |
+| `docs/AGENTS_SDK.md` | Brief for coding agents building *client* apps (shipped in the SDK as `AGENTS.md`) |
 | `docs/BUILDING.md` | Requirements, presets, dependencies, tests, packages |
 | `docs/ARCHITECTURE.md` | Subsystems, ownership and repository layout |
 | `docs/IMPLEMENTATION_DECISIONS.md` | Decision log: every change with its reasons and assumptions |

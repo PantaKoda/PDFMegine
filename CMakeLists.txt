@@ -444,6 +444,11 @@ if(PDFBOOKMARK_BUILD_ENGINE)
           COMPONENT ${_app} EXCLUDE_FROM_ALL)
   # Only DLLs the executable actually loads; Windows system DLLs excluded.
   install(CODE [[
+  # Normalise paths before the exclude regexes (CMake 4.x policy; the
+  # case-insensitive system32 patterns match either way). Silences CMP0207.
+  if(POLICY CMP0207)
+    cmake_policy(SET CMP0207 NEW)
+  endif()
     file(GET_RUNTIME_DEPENDENCIES
       EXECUTABLES "$<TARGET_FILE:pdfbookmarkCli>"
       RESOLVED_DEPENDENCIES_VAR _deps

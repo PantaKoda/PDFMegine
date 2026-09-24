@@ -36,7 +36,7 @@ src/                   implementations, one folder per owner (engine/ includes t
 tests/                 tests, one folder per owner (library/ tests the public APIs)
 library/               unified shared library target and SDK package
 apps/cli/              command-line client
-examples/              SDK clients (C++, Python)
+examples/              SDK clients (C++, Qt Quick, Python)
 text/                  compatibility entry that forwards to subsystems/text
 include/ocr/, src/*.cpp, tools/, corpus/, third_party/, models/
                        the OCR engine: a dependency of S1, not S1 code

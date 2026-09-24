@@ -116,7 +116,7 @@ cd out/sdk; cmake -E tar cf ../../dist/pdfbookmark-sdk-0.1.0-win64.zip --format=
 - `lib/`: `pdfbookmark.lib` and `pdfbookmarkd.lib`, plus `lib/cmake/pdfbookmark`;
 - `bin/`: the Release DLLs; `bin/debug/`: the Debug dependency DLLs (`pdfbookmarkd.dll` itself is in `bin/`);
 - `share/pdfbookmark/models/`;
-- `share/doc/pdfbookmark/`: `API.md`, `examples/basic` (C++), `examples/python` (a ctypes wrapper over the C API) and licences.
+- `share/doc/pdfbookmark/`: `API.md`, `JSON_FORMATS.md`, `AGENTS.md` (from `docs/AGENTS_SDK.md`), `examples/basic` (C++), `examples/qt-quick` (Qt 6 QML), `examples/python` (a ctypes wrapper over the C API) and licences.
 
 The install fails if any dependency other than an optional Windows component is unresolved. `onnxruntime.dll` is always installed from the pinned ONNX Runtime, because Windows 11 has an unrelated `System32\onnxruntime.dll` that the dependency scan would otherwise pick up and then filter out as a system file.
 
@@ -142,7 +142,7 @@ Clients use `find_package(pdfbookmark 0.1 CONFIG REQUIRED)`, link `pdfbookmark::
 
 | Workflow | Runs when | Does |
 | --- | --- | --- |
-| `.github/workflows/ci.yml` | Every push to `main` and every pull request, except documentation-only changes; also manually | `dev` preset: configure, build, all tests (except `golden_parity`, which needs the local-only `golden/`) |
+| `.github/workflows/ci.yml` | Every push to `main` and every pull request, except documentation-only changes; also manually | `dev` preset: configure, build, all tests (except `golden_parity`, which needs the local-only `golden/`). Then it installs the SDK from that build, installs Qt 6.11.2, builds `examples/qt-quick` against the installed SDK, and runs its `--selftest` |
 | `.github/workflows/release.yml` | A pushed tag `vX.Y.Z`; also manually as a dry run | Builds both packages exactly as in §4-5, smoke-tests the CLI with a Windows-only PATH, then publishes a GitHub Release with the two ZIPs. A manual run keeps them as 1-day workflow artifacts instead. |
 
 - **Runner:** `windows-2025-vs2026`, which has Visual Studio 2026, the same as local development.

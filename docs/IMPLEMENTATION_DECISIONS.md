@@ -227,3 +227,29 @@ S6 decisions are recorded with its contract in `docs/handoffs/S6_HANDOFF.md`.
   - The runner label `windows-2025-vs2026` keeps existing, with Visual Studio 2026.
   - The workflow `GITHUB_TOKEN` can read this repository's release assets (true for `contents: read`).
   - The tag is the release trigger, and `PDFBOOKMARK_VERSION` in `CMakeLists.txt` stays the single source of the version number. The workflow fails if they differ.
+
+### E-29 Client documentation bundle and Qt Quick example (24 Sep 2026)
+
+- **Change:** the SDK now ships, next to `API.md`:
+  - `AGENTS.md`, a one-page brief for coding agents that build *client* applications (source `docs/AGENTS_SDK.md`);
+  - `JSON_FORMATS.md`, every JSON document with all enum values;
+  - `examples/qt-quick`, a Qt 6 QML application with a `QML_ELEMENT` controller, worker thread, progress, cancellation, editable titles, writing the new PDF, and a headless `--selftest` mode.
+
+  CI installs the SDK from its `dev` build, installs Qt 6.11.2 (`jurplel/install-qt-action`, pinned to a commit), builds the example against the installed SDK, and runs the self-test.
+- **Why:**
+  - The owner will build a Qt Quick front end and wants agents working on it to have the right documentation bundled.
+  - Client agents need how-to-use rules, not the library's internal design. `AGENTS.md` (root), the handoffs and this log would mislead them, so they are not shipped.
+  - The JSON formats were spread over handoff records. The new reference was generated from real output, and every enum value comes from the encoder source.
+  - Building the example in CI against the *installed* package proves the package works for a real Qt project, which a build-tree test cannot. The example is Debug, like a Qt Creator default, and it runs headless in the same job, so it adds only a few minutes and no second build of the library.
+- **Assumptions:**
+  - Qt clients use the MSVC 64-bit Qt kit (a C++ API requirement, E-19/E-20).
+  - Qt 6.11.2 `win64_msvc2022_64` binaries are compatible with the Visual Studio 2026 compiler (same MSVC v14x ABI).
+  - The SDK installed from the `dev` build contains test hooks. That only matters in CI; released SDKs come from the `release` and `sdk-debug` presets without hooks.
+  - The example was not compiled locally, because Qt is not installed on the development PC and was deliberately not downloaded. CI is its only build verification.
+
+### E-30 Quieter install scripts (24 Sep 2026)
+
+- **Change:** the two install scripts that collect runtime DLLs (the `app` and `sdk` components) set CMake policy CMP0207 to NEW, so paths are normalised before the exclude patterns are applied.
+- **Why:** with CMake 4.x every system DLL printed a multi-line policy warning (about 50 per install). That buried real messages in local and CI logs.
+- **Assumptions:** the exclude patterns (`system32`, `winsxs` and `syswow64`, case-insensitive) match both path forms, so the set of installed DLLs is unchanged. The next packaging run confirms this: it should produce the same file list.
+
