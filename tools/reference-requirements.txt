@@ -1,0 +1,7 @@
+numpy==2.5.3
+onnxruntime==1.30.0
+opencv-python-headless==5.0.0.93
+pillow==12.3.0
+pyclipper==1.4.0
+PyYAML==6.0.3
+shapely==2.1.2

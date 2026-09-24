@@ -1,0 +1,37 @@
+@PACKAGE_INIT@
+
+# pdfbookmark SDK.
+#
+#   find_package(pdfbookmark 0.1 CONFIG REQUIRED)
+#   target_link_libraries(my_app PRIVATE pdfbookmark::pdfbookmark)
+#   pdfbookmark_deploy_runtime(my_app)   # DLLs + OCR models next to my_app
+#
+# pdfbookmark is a shared library whose backends (PDFium, qpdf, ONNX Runtime,
+# OpenCV) are private: nothing else needs to be found or linked. Its C++ API
+# uses standard library types, so clients must use MSVC (x64) with the
+# matching configuration: Debug clients link the Debug library (pdfbookmarkd),
+# Release/RelWithDebInfo/MinSizeRel clients the Release one.
+
+include("${CMAKE_CURRENT_LIST_DIR}/pdfbookmarkTargets.cmake")
+
+set(PDFBOOKMARK_PREFIX "${PACKAGE_PREFIX_DIR}")
+set(PDFBOOKMARK_MODELS_DIR "${PACKAGE_PREFIX_DIR}/share/pdfbookmark/models")
+
+# Copies the pdfbookmark DLL, its runtime dependencies and the OCR models
+# (to <target dir>/models, where find_models() looks) on every build of
+# <target>; unchanged files are skipped, and an upgraded SDK is picked up.
+function(pdfbookmark_deploy_runtime target)
+  set(_deploy "${target}_pdfbookmark_runtime")
+  add_custom_target(${_deploy}
+    COMMAND "${CMAKE_COMMAND}"
+            "-DLIB=$<TARGET_FILE:pdfbookmark::pdfbookmark>"
+            "-DSRC=${PDFBOOKMARK_PREFIX}/bin$<$<CONFIG:Debug>:/debug>"
+            "-DDST=$<TARGET_FILE_DIR:${target}>"
+            "-DMODELS=${PDFBOOKMARK_MODELS_DIR}"
+            -P "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/pdfbookmarkDeployRuntime.cmake"
+    COMMENT "Deploying pdfbookmark runtime for ${target}"
+    VERBATIM)
+  add_dependencies(${target} ${_deploy})
+endfunction()
+
+check_required_components(pdfbookmark)

@@ -1,0 +1,217 @@
+[
+  {
+    "id": "00_plain_screenshot",
+    "file": "00_plain_screenshot.png",
+    "width": 800,
+    "height": 480,
+    "category": "plain screenshot"
+  },
+  {
+    "id": "01_rotated_photo",
+    "file": "01_rotated_photo.png",
+    "width": 800,
+    "height": 600,
+    "category": "photo with rotated text"
+  },
+  {
+    "id": "02_large_scan",
+    "file": "02_large_scan.png",
+    "width": 4201,
+    "height": 600,
+    "category": "over 4000 pixels"
+  },
+  {
+    "id": "03_tiny",
+    "file": "03_tiny.png",
+    "width": 20,
+    "height": 20,
+    "category": "h+w under 64"
+  },
+  {
+    "id": "04_rounding_tie",
+    "file": "04_rounding_tie.png",
+    "width": 96,
+    "height": 64,
+    "category": "34.5 grid tie: 1104/32 rounds to even 34"
+  },
+  {
+    "id": "05_tall_crop",
+    "file": "05_tall_crop.png",
+    "width": 280,
+    "height": 680,
+    "category": "crop aspect ratio over 1.5"
+  },
+  {
+    "id": "06_very_wide",
+    "file": "06_very_wide.png",
+    "width": 2200,
+    "height": 150,
+    "category": "very wide crop"
+  },
+  {
+    "id": "07_doubled_letters",
+    "file": "07_doubled_letters.png",
+    "width": 1000,
+    "height": 240,
+    "category": "adjacent duplicate CTC tokens"
+  },
+  {
+    "id": "08_no_text",
+    "file": "08_no_text.png",
+    "width": 640,
+    "height": 360,
+    "category": "no text"
+  },
+  {
+    "id": "09_synthetic",
+    "file": "09_synthetic.png",
+    "width": 615,
+    "height": 210,
+    "category": "synthetic coverage"
+  },
+  {
+    "id": "10_synthetic",
+    "file": "10_synthetic.png",
+    "width": 710,
+    "height": 265,
+    "category": "synthetic coverage"
+  },
+  {
+    "id": "11_synthetic",
+    "file": "11_synthetic.png",
+    "width": 805,
+    "height": 320,
+    "category": "synthetic coverage"
+  },
+  {
+    "id": "12_synthetic",
+    "file": "12_synthetic.png",
+    "width": 520,
+    "height": 210,
+    "category": "synthetic coverage"
+  },
+  {
+    "id": "13_synthetic",
+    "file": "13_synthetic.png",
+    "width": 615,
+    "height": 265,
+    "category": "synthetic coverage"
+  },
+  {
+    "id": "14_synthetic",
+    "file": "14_synthetic.png",
+    "width": 710,
+    "height": 320,
+    "category": "synthetic coverage"
+  },
+  {
+    "id": "15_synthetic",
+    "file": "15_synthetic.png",
+    "width": 805,
+    "height": 210,
+    "category": "synthetic coverage"
+  },
+  {
+    "id": "16_synthetic",
+    "file": "16_synthetic.png",
+    "width": 520,
+    "height": 265,
+    "category": "synthetic coverage"
+  },
+  {
+    "id": "17_synthetic",
+    "file": "17_synthetic.png",
+    "width": 615,
+    "height": 320,
+    "category": "synthetic coverage"
+  },
+  {
+    "id": "18_synthetic",
+    "file": "18_synthetic.png",
+    "width": 710,
+    "height": 210,
+    "category": "synthetic coverage"
+  },
+  {
+    "id": "19_synthetic",
+    "file": "19_synthetic.png",
+    "width": 805,
+    "height": 265,
+    "category": "synthetic coverage"
+  },
+  {
+    "id": "20_synthetic",
+    "file": "20_synthetic.png",
+    "width": 520,
+    "height": 320,
+    "category": "synthetic coverage"
+  },
+  {
+    "id": "21_synthetic",
+    "file": "21_synthetic.png",
+    "width": 615,
+    "height": 210,
+    "category": "synthetic coverage"
+  },
+  {
+    "id": "22_synthetic",
+    "file": "22_synthetic.png",
+    "width": 710,
+    "height": 265,
+    "category": "synthetic coverage"
+  },
+  {
+    "id": "23_synthetic",
+    "file": "23_synthetic.png",
+    "width": 805,
+    "height": 320,
+    "category": "synthetic coverage"
+  },
+  {
+    "id": "24_synthetic",
+    "file": "24_synthetic.png",
+    "width": 520,
+    "height": 210,
+    "category": "synthetic coverage"
+  },
+  {
+    "id": "25_paddle_sample",
+    "file": "25_paddle_sample.png",
+    "width": 640,
+    "height": 640,
+    "category": "PaddleOCR source fixture",
+    "source": "PaddleOCR/test_tipc/web/test.jpg"
+  },
+  {
+    "id": "26_paddle_sample",
+    "file": "26_paddle_sample.png",
+    "width": 900,
+    "height": 579,
+    "category": "PaddleOCR source fixture",
+    "source": "PaddleOCR/tests/test_files/book.jpg"
+  },
+  {
+    "id": "27_paddle_sample",
+    "file": "27_paddle_sample.png",
+    "width": 695,
+    "height": 900,
+    "category": "PaddleOCR source fixture",
+    "source": "PaddleOCR/tests/test_files/doc_with_formula.png"
+  },
+  {
+    "id": "28_paddle_sample",
+    "file": "28_paddle_sample.png",
+    "width": 800,
+    "height": 600,
+    "category": "PaddleOCR source fixture",
+    "source": "PaddleOCR/langchain-paddleocr/tests/data/sample_img.jpg"
+  },
+  {
+    "id": "29_paddle_sample",
+    "file": "29_paddle_sample.png",
+    "width": 646,
+    "height": 430,
+    "category": "PaddleOCR source fixture",
+    "source": "PaddleOCR/docs/version2.x/static/images/demo.jpg"
+  }
+]

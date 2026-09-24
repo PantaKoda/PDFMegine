@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.20)
+project(pdfbookmarkWriterPlanConsumer LANGUAGES CXX)
+find_package(pdfbookmarkWriter CONFIG REQUIRED)
+add_executable(writer_plan_consumer main.cpp)
+target_compile_features(writer_plan_consumer PRIVATE cxx_std_17)
+target_link_libraries(writer_plan_consumer PRIVATE pdfbookmark::WriterPlan)

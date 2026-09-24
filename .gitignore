@@ -1,0 +1,24 @@
+# Build trees, packages and IDE state (all regenerable).
+/out/
+/dist/
+/.vs/
+/.vscode/
+/CMakeUserPresets.json
+/vcpkg_installed/
+__pycache__/
+*.pyc
+
+# Downloaded dependencies and OCR models: fetched by the build with pinned
+# SHA-256 checksums (cmake/PdfbookmarkDependencies.cmake), never committed.
+/.deps/
+/models/*
+!/models/README.md
+
+# OCR reference material: large, local-only, regenerable (docs/ocr/README.md).
+/golden/
+/PaddleOCR/
+/.venv/
+
+# Local-only documents and personal test books (never published).
+/pdfbookmark-final-human-design.docx
+/tests/books/**/*.pdf

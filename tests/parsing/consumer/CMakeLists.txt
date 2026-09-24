@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.20)
+project(pdfbookmarkParsingConsumer LANGUAGES CXX)
+find_package(pdfbookmarkTocParsing CONFIG REQUIRED)
+add_executable(parsing_consumer main.cpp)
+target_compile_features(parsing_consumer PRIVATE cxx_std_17)
+target_link_libraries(parsing_consumer PRIVATE pdfbookmark::TocParsing)

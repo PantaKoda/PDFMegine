@@ -1,0 +1,7 @@
+# S2 fixture record
+
+Physical PDF indices are **zero based**. Pure-value fixtures are constructed in `tests/detection/detection_test.cpp` and require only S1 contract headers; they do not load a PDF or link PDFium/OCR. They cover single-page and heading-free TOCs, two columns with uncertain reading order, separate title/reference regions, continuation at physical indices 39–40, two candidate groups, adjacent incompatible styles, supplied failed interruptions, unsupplied gaps, degraded evidence, invalid inputs, and heading/number/body/list counterexamples.
+
+`acquired_toc.pdf` is generated deterministically by `make_toc.py` without third-party Python packages. SHA-256: `7BD136F47B6FD229355A9E1919218E8D6F1460F8DA5630029E9BB9C3B46D4055` (1,733 bytes). It has three physical pages: index 0 contains a Contents heading and four aligned entries; index 1 is a four-entry continuation without a heading; index 2 is body prose. The separate `tests/detection/acquired` executable acquires request order `{2,0,1}` through installed S1 EmbeddedOnly and passes only those values to S2. Observed S2 page scores were 14.6, 13, and 2 by physical index. One candidate covers indices `{0,1}` with score 14.3, retains nonzero S1 revisions and row source references, and has `Closed` end due to the supplied body page.
+
+This is a generated, actually acquired TOC example rather than a claimed result from an unavailable copyrighted book. More layouts are needed to calibrate ranking beyond v1 fixtures.

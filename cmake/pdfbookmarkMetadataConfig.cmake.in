@@ -1,0 +1,5 @@
+@PACKAGE_INIT@
+
+# S6 Document Metadata Extraction: backend free (no PDFium, OCR or qpdf).
+include("${CMAKE_CURRENT_LIST_DIR}/pdfbookmarkMetadataTargets.cmake")
+check_required_components(pdfbookmarkMetadata)

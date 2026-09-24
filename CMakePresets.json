@@ -1,0 +1,92 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "windows-base",
+      "hidden": true,
+      "description": "MSVC x64 + Ninja. qpdf comes from vcpkg (vcpkg.json); PDFium, ONNX Runtime, OpenCV and the OCR models are pinned downloads (cmake/PdfbookmarkDependencies.cmake). Run from a Visual Studio x64 developer shell, which sets VCPKG_ROOT.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "installDir": "${sourceDir}/out/install/${presetName}",
+      "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "cl.exe",
+        "CMAKE_CXX_COMPILER": "cl.exe",
+        "VCPKG_TARGET_TRIPLET": "x64-windows",
+        "VCPKG_APPLOCAL_DEPS": "OFF",
+        "PDFBOOKMARK_BUILD_LIBRARY": "ON"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "dev",
+      "displayName": "Development (Debug, all tests)",
+      "description": "Everything, with test hooks and all tests. Use this for day-to-day work.",
+      "inherits": "windows-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "release",
+      "displayName": "Release (packages)",
+      "description": "Release build for the end-user ZIP and the SDK's Release half. No test hooks, no tests.",
+      "inherits": "windows-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "PDFBOOKMARK_TEST_HOOKS": "OFF",
+        "OCR_BUILD_TESTS": "OFF",
+        "OCR_BUILD_TOOLS": "OFF",
+        "PDFBOOKMARK_DETECTION_BUILD_TESTS": "OFF",
+        "PDFBOOKMARK_PARSING_BUILD_TESTS": "OFF",
+        "PDFBOOKMARK_MAPPING_BUILD_TESTS": "OFF",
+        "PDFBOOKMARK_WRITER_BUILD_TESTS": "OFF",
+        "PDFBOOKMARK_METADATA_BUILD_TESTS": "OFF"
+      }
+    },
+    {
+      "name": "sdk-debug",
+      "displayName": "SDK Debug half",
+      "description": "Debug library for the SDK (pdfbookmarkd.dll). No test hooks, no tests.",
+      "inherits": "release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "dev",
+      "configurePreset": "dev"
+    },
+    {
+      "name": "release",
+      "configurePreset": "release"
+    },
+    {
+      "name": "sdk-debug",
+      "configurePreset": "sdk-debug",
+      "targets": [
+        "pdfbookmark"
+      ]
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "dev",
+      "configurePreset": "dev",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}

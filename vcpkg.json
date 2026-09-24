@@ -1,0 +1,8 @@
+{
+  "$comment": "C/C++ dependencies built by vcpkg. PDFium, ONNX Runtime and OpenCV come as pinned prebuilt packages instead (cmake/PdfbookmarkDependencies.cmake).",
+  "name": "pdfbookmark",
+  "version": "0.1.0",
+  "dependencies": [
+    "qpdf"
+  ]
+}

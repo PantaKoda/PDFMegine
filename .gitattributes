@@ -1,0 +1,15 @@
+# Line endings: normalise text to LF in the repository; check out natively.
+* text=auto
+
+# Binary files must never be converted. Test PDFs are generated with LF
+# line endings and exact byte offsets; converting them would corrupt them.
+*.pdf   binary
+*.png   binary
+*.jpg   binary
+*.onnx  binary
+*.zip   binary
+*.docx  binary
+
+# Windows batch files need CRLF (cmd.exe mis-parses labels with LF).
+*.cmd   text eol=crlf
+*.bat   text eol=crlf

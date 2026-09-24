@@ -1,0 +1,63 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [5 0 R 7 0 R 9 0 R] /Count 3 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Length 290 >>
+stream
+BT /F1 14 Tf 40 740 Td (Contents) Tj ET
+BT /F1 14 Tf 40 708 Td (Foundations ................ 1) Tj ET
+BT /F1 14 Tf 40 676 Td (Methods .................... 17) Tj ET
+BT /F1 14 Tf 40 644 Td (Experiments ................ 34) Tj ET
+BT /F1 14 Tf 40 612 Td (Results .................... 52) Tj ET
+endstream
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 600 800] /Resources << /Font << /F1 3 0 R >> >> /Contents 4 0 R >>
+endobj
+6 0 obj
+<< /Length 251 >>
+stream
+BT /F1 14 Tf 40 740 Td (Discussion ................. 70) Tj ET
+BT /F1 14 Tf 40 708 Td (Applications ............... 84) Tj ET
+BT /F1 14 Tf 40 676 Td (Appendix A ................. 95) Tj ET
+BT /F1 14 Tf 40 644 Td (References ................ 110) Tj ET
+endstream
+endobj
+7 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 600 800] /Resources << /Font << /F1 3 0 R >> >> /Contents 6 0 R >>
+endobj
+8 0 obj
+<< /Length 198 >>
+stream
+BT /F1 14 Tf 40 740 Td (Foundations) Tj ET
+BT /F1 14 Tf 40 708 Td (This is body prose without a reference column.) Tj ET
+BT /F1 14 Tf 40 676 Td (It should not look like another contents page.) Tj ET
+endstream
+endobj
+9 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 600 800] /Resources << /Font << /F1 3 0 R >> >> /Contents 8 0 R >>
+endobj
+xref
+0 10
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000127 00000 n 
+0000000197 00000 n 
+0000000538 00000 n 
+0000000664 00000 n 
+0000000966 00000 n 
+0000001092 00000 n 
+0000001341 00000 n 
+trailer
+<< /Size 10 /Root 1 0 R >>
+startxref
+1467
+%%EOF

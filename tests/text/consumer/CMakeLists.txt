@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.20)
+project(pdfbookmarkTextConsumer LANGUAGES CXX)
+find_package(pdfbookmarkText CONFIG REQUIRED)
+add_executable(text_consumer main.cpp)
+target_compile_features(text_consumer PRIVATE cxx_std_17)
+target_link_libraries(text_consumer PRIVATE pdfbookmark::Text)

@@ -1,0 +1,8 @@
+@PACKAGE_INIT@
+
+# pdfbookmark::WriterPlan is backend free and needs no qpdf. pdfbookmark::Writer
+# links qpdf privately; a static Writer build still needs qpdf at the final
+# link, so provide qpdf_DIR (or CMAKE_PREFIX_PATH) when linking Writer.
+find_package(qpdf CONFIG QUIET)
+include("${CMAKE_CURRENT_LIST_DIR}/pdfbookmarkWriterTargets.cmake")
+check_required_components(pdfbookmarkWriter)

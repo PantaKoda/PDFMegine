@@ -1,0 +1,153 @@
+%PDF-1.7
+%âãÏÓ
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R /PageLabels 12 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [5 0 R 7 0 R 9 0 R 11 0 R 15 0 R 20 0 R 22 0 R 24 0 R] /Count 8 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Length 42 >>
+stream
+BT /F1 14 Tf 20 150 Td (Hello World) Tj ET
+endstream
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Resources << /Font << /F1 3 0 R >> >> /Contents 4 0 R /Annots [13 0 R] >>
+endobj
+6 0 obj
+<< /Length 0 >>
+stream
+
+endstream
+endobj
+7 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Resources << /Font << /F1 3 0 R >> >> /Contents 6 0 R >>
+endobj
+8 0 obj
+<< /Length 42 >>
+stream
+BT /F1 14 Tf 20 150 Td (Second page) Tj ET
+endstream
+endobj
+9 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Resources << /Font << /F1 3 0 R >> >> /Contents 8 0 R >>
+endobj
+10 0 obj
+<< /Length 38 >>
+stream
+BT /F1 14 Tf 20 150 Td (Rotated) Tj ET
+endstream
+endobj
+11 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Resources << /Font << /F1 3 0 R >> >> /Contents 10 0 R /CropBox [20 10 180 190] /Rotate 90 >>
+endobj
+12 0 obj
+<< /Nums [0 << /S /r >> 2 << /S /D /P (A-) >>] >>
+endobj
+13 0 obj
+<< /Type /Annot /Subtype /Link /Rect [20 145 100 165] /Border [0 0 0] /Dest [9 0 R /Fit] >>
+endobj
+14 0 obj
+<< /Length 70 >>
+stream
+q 180 0 0 150 10 10 cm /Im0 Do Q BT /F1 14 Tf 20 180 Td (Header) Tj ET
+endstream
+endobj
+15 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Resources << /Font << /F1 3 0 R >> /XObject << /Im0 16 0 R >> >> /Contents 14 0 R >>
+endobj
+16 0 obj
+<< /Type /XObject /Subtype /Image /Width 1 /Height 1 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Length 3 >>
+stream
+ÿÿÿ
+endstream
+endobj
+17 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding /ToUnicode 18 0 R >>
+endobj
+18 0 obj
+<< /Length 371 >>
+stream
+/CIDInit /ProcSet findresource begin
+12 dict begin
+begincmap
+/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def
+/CMapName /Adobe-Identity-UCS def
+/CMapType 2 def
+1 begincodespacerange
+<00> <FF>
+endcodespacerange
+4 beginbfchar
+<41> <4E2D>
+<42> <D83DDE00>
+<43> <00E9>
+<44> <D800>
+endbfchar
+endcmap
+CMapName currentdict /CMap defineresource pop
+end end
+endstream
+endobj
+19 0 obj
+<< /Length 39 >>
+stream
+BT /F2 16 Tf 20 150 Td <41424344> Tj ET
+endstream
+endobj
+20 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Resources << /Font << /F2 17 0 R >> >> /Contents 19 0 R >>
+endobj
+21 0 obj
+<< /Length 37 >>
+stream
+BT /F1 14 Tf 20 150 Td (Scaled) Tj ET
+endstream
+endobj
+22 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /UserUnit 2 /Resources << /Font << /F1 3 0 R >> >> /Contents 21 0 R >>
+endobj
+23 0 obj
+<< /Length 81 >>
+stream
+q 180 0 0 180 10 10 cm /Im0 Do Q BT /F1 14 Tf 3 Tr 20 150 Td (Hidden layer) Tj ET
+endstream
+endobj
+24 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Resources << /Font << /F1 3 0 R >> /XObject << /Im0 16 0 R >> >> /Contents 23 0 R >>
+endobj
+xref
+0 25
+0000000000 65535 f 
+0000000015 00000 n 
+0000000083 00000 n 
+0000000187 00000 n 
+0000000257 00000 n 
+0000000349 00000 n 
+0000000492 00000 n 
+0000000541 00000 n 
+0000000667 00000 n 
+0000000759 00000 n 
+0000000885 00000 n 
+0000000974 00000 n 
+0000001138 00000 n 
+0000001204 00000 n 
+0000001312 00000 n 
+0000001433 00000 n 
+0000001588 00000 n 
+0000001734 00000 n 
+0000001850 00000 n 
+0000002273 00000 n 
+0000002363 00000 n 
+0000002492 00000 n 
+0000002580 00000 n 
+0000002720 00000 n 
+0000002852 00000 n 
+trailer
+<< /Size 25 /Root 1 0 R >>
+startxref
+3007
+%%EOF

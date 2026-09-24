@@ -1,0 +1,9 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+find_dependency(PDFium CONFIG REQUIRED)
+if(@PDFBOOKMARK_TEXT_WITH_OCR@)
+  find_dependency(ocr CONFIG REQUIRED)
+endif()
+include("${CMAKE_CURRENT_LIST_DIR}/pdfbookmarkTextTargets.cmake")
+check_required_components(pdfbookmarkText)
