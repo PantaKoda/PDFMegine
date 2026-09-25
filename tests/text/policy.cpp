@@ -55,6 +55,15 @@ std::unique_ptr<pdfbookmark::text::detail::OcrBackend> make_fake(
 
 int main(int argc, char** argv) {
     require(argc == 2, "fixture path");
+
+    // OCR thread count (issue #1): explicit values are kept, 0 = automatic,
+    // which is half the logical processors clamped to 1..8.
+    require(pdfbookmark::text::resolve_ocr_threads(3) == 3 &&
+                pdfbookmark::text::resolve_ocr_threads(12) == 12,
+            "explicit OCR thread count is used");
+    require(pdfbookmark::text::resolve_ocr_threads(0) >= 1 &&
+                pdfbookmark::text::resolve_ocr_threads(0) <= 8,
+            "automatic OCR thread count is 1..8");
     using namespace pdfbookmark::text;
     detail::set_ocr_factory_for_testing(&make_fake);
     TextAcquisition service;

@@ -106,7 +106,9 @@ PDFB_API pdfb_status pdfb_find_models(char** out_json);
  *   "models":     "<folder>" with det/ and rec/ inside; null disables OCR;
  *                 absent uses pdfb_find_models()
  *   "dpi":        50..1200, OCR image resolution (default 300)
- *   "ocr_budget": maximum pages to OCR in the run */
+ *   "ocr_budget": maximum pages to OCR in the run
+ *   "ocr_threads": CPU threads for OCR, 0..64 (default 0 = automatic: half
+ *                 the processors, at most 8) */
 
 /* ------------------------------------------------------------ operations */
 

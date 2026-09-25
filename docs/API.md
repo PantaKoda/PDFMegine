@@ -70,6 +70,18 @@ These apply to both interfaces. The C++ forms are shown here; section 4 gives th
 
   Errors describe the whole call: a bad argument, an unreadable file, an unsupported (encrypted or signed) PDF, an existing output, cancellation. Expected per-page or per-entry problems are **part of the value** (outcomes, blockers, reasons), not errors.
 - **Threads.** Operations block, from milliseconds up to minutes for large scanned books, so call them from a worker thread in GUI applications. Progress callbacks run on that worker thread; marshal them to the UI thread (in Qt, `QMetaObject::invokeMethod(…, Qt::QueuedConnection)`). The PDF engine is shared by the whole process and concurrent calls are serialized, so run one operation at a time.
+- **OCR cost.** Only scanned (image-only) pages need OCR, and it is the expensive part. Typical figures for US-letter pages on a 12-core desktop CPU (Ryzen 9 5900X):
+
+  | Render resolution (`dpi`) | Time per page | Observed peak memory of the process |
+  | --- | --- | --- |
+  | 300 (default) | about 7.4 s | about 2.3 GB |
+  | 200 | about 2.8 s | about 1.1 GB |
+  | 150 | about 1.6 s | about 0.6 GB |
+
+  - These are **observed peaks, not limits.** They were stable across the tested fixtures (1, 4 and 20 US Letter pages). Larger pages, other content and other recognition batches can need more.
+  - Lower resolutions may reduce accuracy on small print. Evaluate on your own scans before lowering `dpi` by default.
+  - `ocr_threads` (default automatic: half the processors, at most 8) trades speed against CPU left for your UI. Results are the same for any thread count, apart from OCR confidence differences of about 1e-6.
+  - Pages with a real text layer need no OCR and take milliseconds.
 - **Cancellation.** Pass `RunControl{&flag}` with a `std::atomic_bool flag`, and set `flag = true` from any thread. Cancellation is checked between pages.
 - **Safety.** The input PDF is never modified. Existing bookmarks are never used as evidence. `apply()` writes a new file whose outline is exactly the plan, verifies it by reopening it, and only then commits it. The output can never be the input or the plan file.
 - **Ownership.** Results own all their data and stay valid after the call returns.
@@ -172,7 +184,8 @@ This returns positioned text regions per page, with the source (PDF text or OCR)
 - `mode`: `"auto"`, `"embedded"` or `"ocr"`;
 - `models`: a folder path, or `null` for no OCR (default: `pdfb_find_models`);
 - `dpi`: 50 to 1200;
-- `ocr_budget`.
+- `ocr_budget`;
+- `ocr_threads`: 0 to 64 (0 = automatic).
 
 These match the CLI flags.
 

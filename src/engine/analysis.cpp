@@ -623,6 +623,7 @@ Result<AnalysisReport> analyze(const std::filesystem::path& input,
         options.candidate_tie_ratio <= 0 || options.candidate_tie_ratio > 1)
         return Error{ErrorCode::InvalidArgument, "Invalid analysis limits"};
     text::OpenOptions open;
+    open.ocr_threads = options.ocr_threads;
     open.ocr_models = options.models;
     auto opened = text::TextAcquisition{}.open(input, open);
     if (!opened) return opened.error();

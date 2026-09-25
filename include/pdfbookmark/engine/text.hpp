@@ -20,6 +20,7 @@ struct TextOptions {
     text::AcquisitionMode mode = text::AcquisitionMode::Auto;
     text::RasterLimits raster;
     std::optional<text::ModelResources> models;  // Absent: OCR unavailable.
+    int ocr_threads = 0;  // OCR CPU threads; 0 = automatic (text::OpenOptions)
     std::size_t ocr_budget = 64;   // Run-wide OCR attempts across batches.
     std::size_t batch_pages = 8;   // Pages per S1 acquire() call.
 };

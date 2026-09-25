@@ -4,7 +4,7 @@
 
 namespace pdfbookmark::text::detail {
 
-std::unique_ptr<OcrBackend> make_ocr_backend(const ModelResources& resources) {
+std::unique_ptr<OcrBackend> make_ocr_backend(const ModelResources& resources, int /*threads*/) {
     if (auto fake = make_override_ocr_backend(resources)) return fake;
     throw std::runtime_error("S1 was built without OCR support");
 }
