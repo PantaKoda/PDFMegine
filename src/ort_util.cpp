@@ -37,6 +37,13 @@ std::unique_ptr<Ort::Session> create_session(
         throw std::runtime_error("model file does not exist: " + model_path.string());
     }
     Ort::SessionOptions options;
+    // Free tensor memory after each run instead of keeping ONNX Runtime's
+    // CPU arena, which grows to the largest shapes seen (variable-width
+    // recognition batches, full-page detection) and never shrinks: 8.7 GB
+    // peak for four 300-DPI pages versus 2.3 GB without it, identical
+    // outputs (PDFMegine issue #1; docs/ocr/DECISIONS.md).
+    options.DisableCpuMemArena();
+    options.DisableMemPattern();
     options.SetIntraOpNumThreads(threads);
     options.SetInterOpNumThreads(1);
     options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);

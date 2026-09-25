@@ -79,7 +79,9 @@ const char* kOverview =
     "                           pdfbookmark.exe)\n"                           \
     "  --no-ocr-models          Do not load OCR models\n"                     \
     "  --dpi N                  OCR image resolution, 50-1200 (default: 300)\n"\
-    "  --ocr-budget N           Maximum pages to OCR in this run (default: 64)\n"
+    "  --ocr-budget N           Maximum pages to OCR in this run (default: 64)\n"\
+    "  --ocr-threads N          CPU threads for OCR (default 0 = automatic:\n"\
+    "                           half the processors, at most 8)\n"
 
 const char* kAnalyzeHelp =
     "pdfbookmark analyze <input.pdf> [options]\n"
@@ -262,6 +264,7 @@ struct Common {
     std::optional<pdfbookmark::text::ModelResources> models;
     pdfbookmark::text::RasterLimits raster;
     std::size_t ocr_budget = 64;
+    int ocr_threads = 0;  // 0 = automatic
     bool force = false;
 };
 
@@ -291,13 +294,16 @@ int parse_common(const std::vector<std::string>& args, const std::string& argv0,
             no_models = true;
         } else if (arg == "--force") {
             common.force = true;
-        } else if (arg == "--dpi" || arg == "--ocr-budget") {
+        } else if (arg == "--dpi" || arg == "--ocr-budget" || arg == "--ocr-threads") {
             if (!value(text)) return usage(arg + " needs a value");
             const auto n = number(text);
             if (!n) return usage(arg + " must be a non-negative integer");
             if (arg == "--dpi") {
                 if (*n < 50 || *n > 1200) return usage("--dpi must be 50..1200");
                 common.raster.dpi = static_cast<int>(*n);
+            } else if (arg == "--ocr-threads") {
+                if (*n > 64) return usage("--ocr-threads must be 0..64");
+                common.ocr_threads = static_cast<int>(*n);
             } else {
                 common.ocr_budget = *n;
             }
@@ -403,6 +409,7 @@ int run_text(const std::vector<std::string>& args, const std::string& argv0) {
     options.mode = common.mode;
     options.models = common.models;
     options.raster = common.raster;
+    options.ocr_threads = common.ocr_threads;
     options.ocr_budget = common.ocr_budget;
     std::signal(SIGINT, on_interrupt);
     const auto report = engine::extract_text(
@@ -528,6 +535,7 @@ int run_analyze(const std::vector<std::string>& args, const std::string& argv0,
     options.mode = common.mode;
     options.models = common.models;
     options.raster = common.raster;
+    options.ocr_threads = common.ocr_threads;
     options.limits.ocr_budget = common.ocr_budget;
     std::signal(SIGINT, on_interrupt);
     const auto result = engine::analyze(
@@ -660,6 +668,7 @@ int run_metadata(const std::vector<std::string>& args, const std::string& argv0)
     options.mode = common.mode;
     options.models = common.models;
     options.raster = common.raster;
+    options.ocr_threads = common.ocr_threads;
     options.ocr_budget = std::min<std::size_t>(common.ocr_budget, 64);
     std::signal(SIGINT, on_interrupt);
     const auto result = engine::extract_metadata(*common.input, options, RunControl{&g_cancel});

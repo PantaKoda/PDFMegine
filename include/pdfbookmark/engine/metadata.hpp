@@ -20,6 +20,7 @@ struct MetadataRunOptions {
     text::AcquisitionMode mode = text::AcquisitionMode::Auto;
     text::RasterLimits raster;
     std::optional<text::ModelResources> models;
+    int ocr_threads = 0;  // OCR CPU threads; 0 = automatic (text::OpenOptions)
     std::size_t initial_pages = 10;
     std::size_t batch_pages = 10;
     std::size_t max_pages = 30;    // "Not found" means not in these pages.

@@ -94,6 +94,14 @@ int main(int argc, char** argv) {
     require(pdfb_analyze(input, "{\"mode\":\"fast\"}", NULL, NULL, NULL, &report, NULL) ==
                 PDFB_INVALID_ARGUMENT,
             "bad option value rejected");
+    require(pdfb_analyze(input, "{\"mode\":\"embedded\",\"ocr_threads\":65}", NULL, NULL, NULL,
+                         &report, NULL) == PDFB_INVALID_ARGUMENT &&
+                contains(pdfb_last_error(), "ocr_threads"),
+            "out-of-range ocr_threads rejected");
+    require(pdfb_extract_text(boundary, "{\"mode\":\"embedded\",\"pages\":[0],\"ocr_threads\":2}",
+                              NULL, NULL, NULL, &report) == PDFB_OK,
+            "ocr_threads accepted");
+    pdfb_free(report);
     require(pdfb_validate_plan("{\"nodes\":", &result) == PDFB_INVALID_ARGUMENT,
             "malformed plan JSON rejected");
     join(output, sizeof output, argv[3], "missing.pdf");

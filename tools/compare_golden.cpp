@@ -306,16 +306,20 @@ double compare_values(
 
 int main(int argc, char** argv) {
     try {
-        if (argc != 5) {
+        if (argc != 5 && argc != 6) {
             throw std::invalid_argument(
-                "usage: ocr_compare_golden GOLDEN_ROOT DET_MODEL REC_MODEL CHARSET");
+                "usage: ocr_compare_golden GOLDEN_ROOT DET_MODEL REC_MODEL CHARSET [THREADS]");
         }
+        // Optional ONNX Runtime thread count (default 1, the validated
+        // baseline); used to check multi-threaded inference against the
+        // same tolerances (PDFMegine issue #1).
+        const int threads = argc == 6 ? std::stoi(argv[5]) : 1;
         const std::filesystem::path golden_root = argv[1];
         Ort::Env environment(ORT_LOGGING_LEVEL_WARNING, "ocr_compare_golden");
         auto detector_session =
-            ocr::detail::create_session(environment, std::filesystem::path(argv[2]), 1);
+            ocr::detail::create_session(environment, std::filesystem::path(argv[2]), threads);
         auto recognizer_session =
-            ocr::detail::create_session(environment, std::filesystem::path(argv[3]), 1);
+            ocr::detail::create_session(environment, std::filesystem::path(argv[3]), threads);
         const auto charset = load_charset(std::filesystem::path(argv[4]));
         const auto directories = golden_directories(golden_root);
         if (directories.empty()) {
@@ -323,6 +327,7 @@ int main(int argc, char** argv) {
         }
 
         ocr::Options options;
+        options.threads = threads;
         double overall_tensor_maximum = 0.0;
         double overall_map_maximum = 0.0;
         double overall_raw_corner_maximum = 0.0;

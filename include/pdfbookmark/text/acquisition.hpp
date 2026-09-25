@@ -110,7 +110,15 @@ struct ModelResources {
 struct OpenOptions {
     std::size_t max_pdf_bytes = 512ULL * 1024 * 1024;
     std::optional<ModelResources> ocr_models;
+    // CPU threads for OCR inference. 0 = automatic: half the logical
+    // processors, at least 1 and at most 8 (speed levels off beyond 8 and
+    // the rest stay free for the client's UI). Results are identical except
+    // for OCR confidence differences around 1e-6.
+    int ocr_threads = 0;
 };
+
+// The OCR thread count `requested` resolves to (0 = automatic).
+int resolve_ocr_threads(int requested) noexcept;
 
 struct RasterLimits {
     int dpi = 300;

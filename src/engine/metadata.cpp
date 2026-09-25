@@ -26,6 +26,7 @@ Result<MetadataReport> extract_metadata(const std::filesystem::path& input,
     if (options.initial_pages == 0 || options.batch_pages == 0 || options.max_pages == 0)
         return Error{ErrorCode::InvalidArgument, "Invalid metadata page limits"};
     text::OpenOptions open;
+    open.ocr_threads = options.ocr_threads;
     open.ocr_models = options.models;
     auto opened = text::TextAcquisition{}.open(input, open);
     if (!opened) return opened.error();

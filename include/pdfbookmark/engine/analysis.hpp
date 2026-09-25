@@ -50,6 +50,7 @@ struct AnalysisOptions {
     text::AcquisitionMode mode = text::AcquisitionMode::Auto;
     text::RasterLimits raster;
     std::optional<text::ModelResources> models;
+    int ocr_threads = 0;  // OCR CPU threads; 0 = automatic (text::OpenOptions)
     SearchLimits limits;
     detection::DetectionOptions detection;
     parsing::ParsingOptions parsing;

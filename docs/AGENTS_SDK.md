@@ -44,6 +44,7 @@ pdfbookmark_deploy_runtime(<app>)                         # DLLs + OCR models ne
 | Never pass the input path as the output. Choose a new file (e.g. `"<name> (bookmarked).pdf"`). An existing output is refused unless `ApplyOptions{true}`. | The library never modifies the input and refuses to overwrite it. |
 | Don't edit `plan.input` (the SHA-256 and page count). Titles, parents, destinations and node order may be edited. | The plan is bound to one exact file. `apply` refuses others. |
 | Set `options.models = pdfbookmark::find_models();`. `nullopt` is fine: scanned pages are then reported unreadable. | OCR models are found next to the executable (`models/`). |
+| Budget about **2.3 GB** of memory and about **7 s per scanned page** for OCR at the default 300 DPI (about 1.1 GB and 3 s at `raster.dpi = 200`). Set `options.ocr_threads` (0 = automatic, at most 8) lower if the UI needs CPU at the same time. Run one OCR job at a time. | OCR runs a neural network on each full page image. See `API.md` §2, "OCR cost". |
 | Existing bookmarks in the PDF are ignored and replaced in the new copy. Don't try to merge them. | This is by design. |
 
 ## Minimal C++ flow

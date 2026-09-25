@@ -15,6 +15,7 @@
 #include <limits>
 #include <memory>
 #include <mutex>
+#include <thread>
 #include <set>
 #include <stdexcept>
 #include <string>
@@ -468,11 +469,19 @@ std::string PageContent::flat_text() const {
     return flat;
 }
 
+int resolve_ocr_threads(int requested) noexcept {
+    if (requested > 0) return requested;
+    const unsigned logical = std::thread::hardware_concurrency();  // 0 if unknown
+    return static_cast<int>(std::clamp(logical / 2U, 1U, 8U));
+}
+
 struct TextDocument::Impl {
     explicit Impl(const std::filesystem::path& path, const OpenOptions& opts)
-        : session(path, opts.max_pdf_bytes), resources(opts.ocr_models) {}
+        : session(path, opts.max_pdf_bytes), resources(opts.ocr_models),
+          ocr_threads(resolve_ocr_threads(opts.ocr_threads)) {}
     detail::PdfSession session;
     std::optional<ModelResources> resources;
+    int ocr_threads = 1;
     std::unique_ptr<detail::OcrBackend> ocr;
     std::string model_identity;
     std::uint64_t next_revision = 1;
@@ -611,9 +620,12 @@ Result<AcquisitionBatch> TextDocument::acquire(
                             ";rec=" + detail::sha256_hex(
                                 detail::sha256_file(models.recognizer)) +
                             ";charset=" + detail::sha256_hex(
-                                detail::sha256_file(models.charset));
+                                detail::sha256_file(models.charset)) +
+                            ";threads=" + std::to_string(impl_->ocr_threads);
                     }
-                    if (!impl_->ocr) impl_->ocr = detail::make_ocr_backend(*impl_->resources);
+                    if (!impl_->ocr)
+                        impl_->ocr = detail::make_ocr_backend(*impl_->resources,
+                                                              impl_->ocr_threads);
                     const auto lines = impl_->ocr->run(raster);
                     recognized.emplace();
                     recognized->page_index = index;

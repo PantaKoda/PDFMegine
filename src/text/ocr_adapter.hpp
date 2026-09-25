@@ -42,7 +42,8 @@ inline std::unique_ptr<OcrBackend> make_override_ocr_backend(
     return nullptr;
 }
 #endif
-std::unique_ptr<OcrBackend> make_ocr_backend(const ModelResources& resources);
+// `threads`: CPU threads for inference (already resolved, >= 1).
+std::unique_ptr<OcrBackend> make_ocr_backend(const ModelResources& resources, int threads);
 const char* ocr_backend_identity() noexcept;
 bool ocr_backend_available() noexcept;
 

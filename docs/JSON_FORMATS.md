@@ -56,7 +56,7 @@ Plans carry only `sha256` and `page_count`. `apply` refuses a plan whose `input`
 }
 ```
 
-**Acquisition summary** (`acquisition`): `policy_id`, `model_identity` (`"not-used"` when no OCR ran), `configurations[]`, `ocr_budget` and `ocr_attempts_used`.
+**Acquisition summary** (`acquisition`): `policy_id`, `model_identity` (the OCR backend, the SHA-256 of each model file and `;threads=N`; `"not-used"` when no OCR ran), `configurations[]`, `ocr_budget` and `ocr_attempts_used`.
 
 ## 3. Text report (`kind: "pdfbookmark.text"`)
 

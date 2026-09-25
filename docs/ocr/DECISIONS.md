@@ -84,3 +84,13 @@ This exactly reproduces all golden batch-index files, including the 65-crop and
 ratios at a batch boundary cannot change the batch width or restored final
 result, but their intermediate batch index order is NumPy implementation and
 CPU-dispatch dependent.
+
+## Memory arena and thread count (PDFMegine issue #1, 25 September 2026)
+
+The detector and recognizer sessions disable ONNX Runtime's CPU memory arena and memory-pattern planning (`src/ort_util.cpp`).
+
+- **Why:** the arena grows to the largest tensor shapes a session has seen and never shrinks. Full-page detection plus variable-width recognition batches made a process peak at 8.7 GB for four 300-DPI pages (4.45 GB for one page). Without the arena the peak is 2.3 GB, whatever the page count, with byte-identical outputs and about 13% more time at one thread.
+- **Verified:** `golden_parity` passes unchanged (single-threaded, the validated baseline).
+
+`ocr_compare_golden` accepts an optional fifth argument, the ONNX Runtime thread count (default 1). At 8 threads all 30 images keep identical boxes, crops, recognition tensors and decoded text. The maximum confidence difference is 5.96e-7, and the maximum recognition-logit difference 2.86e-6, from floating-point summation order.
+- `ocr::Options::threads` still defaults to 1. PDF Bookmark's S1 adapter chooses the thread count; see `docs/IMPLEMENTATION_DECISIONS.md` E-31.

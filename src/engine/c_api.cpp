@@ -174,7 +174,7 @@ private:
 
 // Adds the reading options every page-reading operation accepts.
 std::set<std::string> with_reading(std::set<std::string> keys) {
-    keys.insert({"mode", "models", "dpi", "ocr_budget"});
+    keys.insert({"mode", "models", "dpi", "ocr_budget", "ocr_threads"});
     return keys;
 }
 
@@ -183,6 +183,7 @@ struct Reading {
     RasterLimits raster;
     std::optional<ModelResources> models;
     std::optional<std::size_t> ocr_budget;
+    int ocr_threads = 0;
 };
 
 Reading reading_of(const Options& options) {
@@ -207,6 +208,7 @@ Reading reading_of(const Options& options) {
     }
     if (const auto dpi = options.integer("dpi", 50, 1200)) r.raster.dpi = static_cast<int>(*dpi);
     r.ocr_budget = options.count("ocr_budget");
+    if (const auto n = options.integer("ocr_threads", 0, 64)) r.ocr_threads = static_cast<int>(*n);
     return r;
 }
 
@@ -345,6 +347,7 @@ pdfb_status pdfb_extract_text(const char* pdf_path, const char* options_json,
         TextOptions text_options;
         text_options.mode = reading.mode;
         text_options.raster = reading.raster;
+        text_options.ocr_threads = reading.ocr_threads;
         text_options.models = reading.models;
         if (reading.ocr_budget) text_options.ocr_budget = *reading.ocr_budget;
 
@@ -386,6 +389,7 @@ pdfb_status pdfb_analyze(const char* pdf_path, const char* options_json,
         AnalysisOptions analysis;
         analysis.mode = reading.mode;
         analysis.raster = reading.raster;
+        analysis.ocr_threads = reading.ocr_threads;
         analysis.models = reading.models;
         if (reading.ocr_budget) analysis.limits.ocr_budget = *reading.ocr_budget;
         if (const auto v = options.boolean("allow_partial")) analysis.plan.allow_partial = *v;
@@ -440,6 +444,7 @@ pdfb_status pdfb_extract_metadata(const char* pdf_path, const char* options_json
         MetadataRunOptions run;
         run.mode = reading.mode;
         run.raster = reading.raster;
+        run.ocr_threads = reading.ocr_threads;
         run.models = reading.models;
         if (reading.ocr_budget) run.ocr_budget = *reading.ocr_budget;
         if (const auto n = options.count("max_pages")) run.max_pages = *n;

@@ -254,3 +254,26 @@ S6 decisions are recorded with its contract in `docs/handoffs/S6_HANDOFF.md`.
 - **Why:** with CMake 4.x every system DLL printed a multi-line policy warning (about 50 per install). That buried real messages in local and CI logs.
 - **Assumptions:** the exclude patterns (`system32`, `winsxs` and `syswow64`, case-insensitive) match both path forms, so the set of installed DLLs is unchanged. The next packaging run confirms this: it should produce the same file list.
 
+### E-31 OCR memory and throughput (issue #1, 25 Sep 2026)
+
+- **Change:**
+  1. The OCR sessions no longer use ONNX Runtime's CPU memory arena or memory patterns (a small backend fix, recorded in `docs/ocr/DECISIONS.md`).
+  2. OCR inference uses several CPU threads. The new option `text::OpenOptions::ocr_threads` is exposed as `ocr_threads` in `TextOptions`, `AnalysisOptions` and `MetadataRunOptions`, as the C API reading option `ocr_threads`, and as the CLI `--ocr-threads N`.
+     - 0 means automatic: half the logical processors, clamped to 1-8. The resolved value is part of `model_identity` (`;threads=N`).
+  3. `ocr_compare_golden` accepts an optional thread count.
+- **Why:** issue #1 reported a Qt harness at 8.9 GB private memory and about 18 s per scanned page. It was reproduced here (8.7 GB, 18.8 s/page) and traced to two causes:
+  - **Memory:** the ONNX Runtime arena kept the largest allocations ever seen, so one page peaked at 4.45 GB and four at 8.7 GB. Disabling it gives 2.3 GB flat, with identical output.
+  - **Time:** inference ran on **one thread** (`ocr::Options::threads` defaulted to 1, and S1 never set it). Speed scales to about 8 threads (84 s → 30 s for 4 pages) and then levels off (24 threads: 33 s). Capping at 8, or half the processors, leaves cores for the client's UI.
+  - The remaining 2.3 GB scales with the render size: 1.1 GB at 200 DPI, 0.6 GB at 150. That is the detector running on the full page image.
+- **Assumptions:**
+  - Multi-threaded results are acceptable as equivalent. Golden parity at 8 threads has identical boxes and text, and confidence within 6e-7.
+  - Clients that need exact single-thread reproducibility can set `ocr_threads = 1`.
+  - The default DPI stays 300 until accuracy at 200 DPI has been evaluated on real scanned books. 200 DPI would halve memory and speed OCR up 2.6×, but small print may suffer, and the fixture used here is synthetic.
+- **Verified (Release, Ryzen 9 5900X, 4-page issue fixture at 300 DPI):**
+  - metadata 75 s → 30 s and analysis 72 s → 29 s, both 8.7 GB → 2.3 GB;
+  - 20 pages 376 s → 147 s (7.4 s/page steady), 8.7 GB → 2.3 GB, with system commit up about 2 GB instead of about 10 GB;
+  - text and boxes identical to the pre-fix output;
+  - full `dev` suite 23/23, including `golden_parity`.
+- **Not done (follow-ups):**
+  - Metadata extraction and TOC analysis each OCR the same front pages in separate sessions, so the reader's metadata-plus-analysis workload OCRs them twice. A combined operation that shares one session would roughly halve that workload's time.
+  - The `0xE0000008` Qt PDF exits seen in the reader harness are not reproduced or explained here. With about 6.4 GB less commit per OCR job, the memory-pressure explanation is much less likely to recur.

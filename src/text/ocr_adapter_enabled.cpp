@@ -13,8 +13,9 @@ namespace {
 
 class PackageOcr final : public OcrBackend {
 public:
-    explicit PackageOcr(const ModelResources& resources)
-        : engine_(resources.detector, resources.recognizer, resources.charset) {}
+    PackageOcr(const ModelResources& resources, int threads)
+        : engine_(resources.detector, resources.recognizer, resources.charset,
+                  options_with(threads)) {}
 
     std::vector<OcrLine> run(const Raster& raster) override {
         const ocr::ImageView view{raster.bgr.data(), raster.width, raster.height, raster.stride};
@@ -35,6 +36,12 @@ public:
     }
 
 private:
+    static ocr::Options options_with(int threads) {
+        ocr::Options options;  // The validated PP-OCRv6 profile, unchanged.
+        options.threads = threads;
+        return options;
+    }
+
     ocr::Engine engine_;
 };
 
@@ -54,10 +61,10 @@ void quiet_opencv_logging() {
 
 }  // namespace
 
-std::unique_ptr<OcrBackend> make_ocr_backend(const ModelResources& resources) {
+std::unique_ptr<OcrBackend> make_ocr_backend(const ModelResources& resources, int threads) {
     if (auto fake = make_override_ocr_backend(resources)) return fake;
     quiet_opencv_logging();
-    return std::make_unique<PackageOcr>(resources);
+    return std::make_unique<PackageOcr>(resources, threads);
 }
 
 const char* ocr_backend_identity() noexcept { return "PP-OCRv6 medium via ocr::Engine"; }

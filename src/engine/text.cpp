@@ -39,6 +39,7 @@ Result<TextReport> extract_text(
     if (options.batch_pages == 0)
         return Error{ErrorCode::InvalidArgument, "batch_pages must be positive"};
     text::OpenOptions open;
+    open.ocr_threads = options.ocr_threads;
     open.ocr_models = options.models;
     auto opened = text::TextAcquisition{}.open(input, open);
     if (!opened) return opened.error();
