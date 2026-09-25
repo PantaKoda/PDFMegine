@@ -161,3 +161,22 @@ git push origin v0.1.0
 ```
 
 The workflow refuses a tag that doesn't match `PDFBOOKMARK_VERSION`.
+
+## 8. Measuring OCR memory and time
+
+`tools/bench/` reproduces the figures from issue #1 (decision E-31) for scanned (image-only) pages:
+
+```powershell
+python tools/bench/make_scan_fixture.py scan4.pdf 4       # the issue's 4-page fixture (byte-identical)
+python tools/bench/make_scan_fixture.py scan20.pdf 20
+$exe = "out/build/release/pdfbookmark.exe"; $models = "models"
+pwsh tools/bench/ocr_resources.ps1 text4     $exe text     scan4.pdf --mode ocr --models $models --json t4.json --force
+pwsh tools/bench/ocr_resources.ps1 metadata4 $exe metadata scan4.pdf --models $models --json m4.json --force
+pwsh tools/bench/ocr_resources.ps1 analyze4  $exe analyze  scan4.pdf --models $models --report a4.json --force
+pwsh tools/bench/ocr_resources.ps1 text20    $exe text     scan20.pdf --mode ocr --models $models --json t20.json --force
+```
+
+- Vary `--dpi` and `--ocr-threads` for the other tables in E-31.
+- The script prints elapsed time, peak private bytes, peak working set and system commit.
+- The 4-page fixture's SHA-256 is in `make_scan_fixture.py`.
+- OCR parity at a given thread count: `out/build/dev/ocr_compare_golden golden models/det/inference.onnx models/rec/inference.onnx models/rec/charset.txt <threads>`. This needs the local-only `golden/`.

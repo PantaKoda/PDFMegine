@@ -261,8 +261,12 @@ S6 decisions are recorded with its contract in `docs/handoffs/S6_HANDOFF.md`.
   2. OCR inference uses several CPU threads. The new option `text::OpenOptions::ocr_threads` is exposed as `ocr_threads` in `TextOptions`, `AnalysisOptions` and `MetadataRunOptions`, as the C API reading option `ocr_threads`, and as the CLI `--ocr-threads N`.
      - 0 means automatic: half the logical processors, clamped to 1-8. The resolved value is part of `model_identity` (`;threads=N`).
   3. `ocr_compare_golden` accepts an optional thread count.
+  4. `tools/bench/` (`make_scan_fixture.py`, `ocr_resources.ps1`, documented in `docs/BUILDING.md` §8) makes the measurements reproducible. The generated 4-page fixture is byte-identical to the reader harness's.
 - **Why:** issue #1 reported a Qt harness at 8.9 GB private memory and about 18 s per scanned page. It was reproduced here (8.7 GB, 18.8 s/page) and traced to two causes:
-  - **Memory:** the ONNX Runtime arena kept the largest allocations ever seen, so one page peaked at 4.45 GB and four at 8.7 GB. Disabling it gives 2.3 GB flat, with identical output.
+  - **Memory:** ONNX Runtime's arena kept the largest allocations ever seen, so one page peaked at 4.45 GB and four at 8.7 GB. Memory-pattern planning added more on top.
+    - Attribution on 4 pages: arena off alone gives 2.82 GB; patterns off alone gives 4.56 GB; both off gives 2.32 GB.
+    - Output is identical in every combination.
+    - 2.3 GB is an **observed peak, stable across the tested fixtures** (1, 4 and 20 US Letter pages), not a guaranteed limit.
   - **Time:** inference ran on **one thread** (`ocr::Options::threads` defaulted to 1, and S1 never set it). Speed scales to about 8 threads (84 s → 30 s for 4 pages) and then levels off (24 threads: 33 s). Capping at 8, or half the processors, leaves cores for the client's UI.
   - The remaining 2.3 GB scales with the render size: 1.1 GB at 200 DPI, 0.6 GB at 150. That is the detector running on the full page image.
 - **Assumptions:**
@@ -275,5 +279,7 @@ S6 decisions are recorded with its contract in `docs/handoffs/S6_HANDOFF.md`.
   - text and boxes identical to the pre-fix output;
   - full `dev` suite 23/23, including `golden_parity`.
 - **Not done (follow-ups):**
-  - Metadata extraction and TOC analysis each OCR the same front pages in separate sessions, so the reader's metadata-plus-analysis workload OCRs them twice. A combined operation that shares one session would roughly halve that workload's time.
-  - The `0xE0000008` Qt PDF exits seen in the reader harness are not reproduced or explained here. With about 6.4 GB less commit per OCR job, the memory-pressure explanation is much less likely to recur.
+  - Metadata extraction and TOC analysis each OCR the same front pages in separate sessions, so the reader's metadata-plus-analysis workload OCRs them twice.
+    - Sharing a session alone would only avoid reloading the models, because `TextDocument::acquire()` processes the requested pages again.
+    - The follow-up is for Engine to **reuse compatible `PageAcquisition` results** (same page, revision and acquisition configuration) between metadata extraction and TOC analysis, while S1 keeps ownership of acquisition. This was a review point on issue #1.
+  - The `0xE0000008` Qt PDF exits seen in the reader harness are not reproduced or explained here, and **their cause remains unresolved**. The lower memory use reduces the risk of memory pressure in future runs. It says nothing about what caused the earlier crashes.

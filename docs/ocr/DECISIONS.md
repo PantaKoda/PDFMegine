@@ -89,8 +89,15 @@ CPU-dispatch dependent.
 
 The detector and recognizer sessions disable ONNX Runtime's CPU memory arena and memory-pattern planning (`src/ort_util.cpp`).
 
-- **Why:** the arena grows to the largest tensor shapes a session has seen and never shrinks. Full-page detection plus variable-width recognition batches made a process peak at 8.7 GB for four 300-DPI pages (4.45 GB for one page). Without the arena the peak is 2.3 GB, whatever the page count, with byte-identical outputs and about 13% more time at one thread.
-- **Verified:** `golden_parity` passes unchanged (single-threaded, the validated baseline).
+- **Why:** the arena grows to the largest tensor shapes a session has seen and never shrinks. Full-page detection plus variable-width recognition batches made a process peak at 8.7 GB for four 300-DPI pages (4.45 GB for one page). With both disabled, the observed peak is 2.3 GB, stable across the tested fixtures (1, 4 and 20 US Letter pages; not a guaranteed limit). Outputs are byte-identical, at about 6-14% more time.
+- **Attribution** (4 pages, 300 DPI; peak private memory at 1 and 8 threads alike):
+  - both enabled (the old default): 8.70 GB;
+  - arena disabled only: 2.82 GB;
+  - memory patterns disabled only: 4.56 GB;
+  - both disabled: 2.32 GB.
+
+  The arena is the main cause, and memory patterns add about 0.5 GB on top of it. The effects overlap, because planned patterns are allocated through the arena. All eight runs produced identical output within each thread count.
+- **Verified:** `golden_parity` passes unchanged. The single-threaded maximum confidence difference is 2.980232e-07, exactly the original validated baseline.
 
 `ocr_compare_golden` accepts an optional fifth argument, the ONNX Runtime thread count (default 1). At 8 threads all 30 images keep identical boxes, crops, recognition tensors and decoded text. The maximum confidence difference is 5.96e-7, and the maximum recognition-logit difference 2.86e-6, from floating-point summation order.
 - `ocr::Options::threads` still defaults to 1. PDF Bookmark's S1 adapter chooses the thread count; see `docs/IMPLEMENTATION_DECISIONS.md` E-31.
