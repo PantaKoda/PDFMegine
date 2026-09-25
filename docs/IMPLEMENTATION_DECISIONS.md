@@ -283,3 +283,15 @@ S6 decisions are recorded with its contract in `docs/handoffs/S6_HANDOFF.md`.
     - Sharing a session alone would only avoid reloading the models, because `TextDocument::acquire()` processes the requested pages again.
     - The follow-up is for Engine to **reuse compatible `PageAcquisition` results** (same page, revision and acquisition configuration) between metadata extraction and TOC analysis, while S1 keeps ownership of acquisition. This was a review point on issue #1.
   - The `0xE0000008` Qt PDF exits seen in the reader harness are not reproduced or explained here, and **their cause remains unresolved**. The lower memory use reduces the risk of memory pressure in future runs. It says nothing about what caused the earlier crashes.
+
+### E-32 Version 0.2.0 (25 Sep 2026)
+
+- **Change:** `PDFBOOKMARK_VERSION` is now 0.2.0, released as tag `v0.2.0` (SDK and CLI ZIPs on GitHub Releases).
+- **Why:**
+  - It contains the issue #1 fix (E-31, PR #2).
+  - The C++ option structs `TextOptions`, `AnalysisOptions`, `MetadataRunOptions` and `text::OpenOptions` gained a field (`ocr_threads`), which changes their memory layout. C++ clients must therefore rebuild against the new headers, which calls for a minor version bump, not a patch.
+  - The C API is unchanged apart from a new optional option key, so `PDFB_C_API_VERSION` stays 1 and C and FFI clients need no rebuild.
+- **Assumptions:**
+  - The CMake package keeps `SameMajorVersion` compatibility, so clients asking for `find_package(pdfbookmark 0.1)` also accept 0.2.0.
+  - Clients rebuild fully when switching SDKs; the SDK brief says so.
+  - The standalone subsystem packages (`subsystems/*`) and the OCR package keep their own 0.1.0 versions. They are not released separately.
