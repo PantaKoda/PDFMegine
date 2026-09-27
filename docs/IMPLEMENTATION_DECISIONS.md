@@ -362,3 +362,11 @@ S6 decisions are recorded with its contract in `docs/handoffs/S6_HANDOFF.md`.
 
     `library_c_api` checks the callback and the real-OCR run-wide cap (the metadata stage now does the 1 OCR), and `library_python` checks the callback.
 
+
+### E-34 Version 0.3.0 (27 Sep 2026)
+
+- **Change:** `PDFBOOKMARK_VERSION` is now 0.3.0, released as tag `v0.3.0`.
+- **Why:** it contains issue #3 (PR #4): `analyze_book()` / `pdfb_analyze_book`, metadata first, one OCR per page, and the run-wide OCR budget, plus the CLI's `--metadata`, output-collision and exit-status fixes. This is a minor bump because the change is additive: new functions and types, and no existing struct or function changed. The consumer review asked for the bump in the release commit.
+- **Assumptions:**
+  - Existing 0.2.0 clients keep working after a rebuild. `SameMajorVersion` lets `find_package(pdfbookmark 0.2)` accept 0.3.0.
+  - `PDFB_C_API_VERSION` stays 1 because the C change is additive. `pdfb_analyze_book` is new in this release, so its signature was changed before any client used it.
