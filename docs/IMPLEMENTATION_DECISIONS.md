@@ -295,3 +295,38 @@ S6 decisions are recorded with its contract in `docs/handoffs/S6_HANDOFF.md`.
   - The CMake package keeps `SameMajorVersion` compatibility, so clients asking for `find_package(pdfbookmark 0.1)` also accept 0.2.0.
   - Clients rebuild fully when switching SDKs; the SDK brief says so.
   - The standalone subsystem packages (`subsystems/*`) and the OCR package keep their own 0.1.0 versions. They are not released separately.
+
+### E-33 Reuse acquired pages across metadata and TOC analysis (issue #3, 27 Sep 2026)
+
+- **Change:** new operation `analyze_book(pdf, AnalysisOptions, MetadataRunOptions, control, progress)` returns a `BookReport` (both reports plus `pages_reused`). It is also available as C API `pdfb_analyze_book`, Python `Library.analyze_book` and CLI `analyze`/`add --metadata PATH`.
+  - It opens one S1 session and runs analysis, then metadata.
+  - A per-session `PageCache` in the Engine ledger serves pages the analysis already acquired.
+  - `analyze()` and `extract_metadata()` are unchanged. Internally they became "open, then run on the session" (`src/engine/runs.hpp`).
+- **Why:**
+  - MyBooksLibrary imports every book with both calls, so each scanned page was OCR'd twice. The re-verification on #1 measured this at 57.7 s for 4 pages.
+  - Following the #1 review, a shared session alone is not enough, because `acquire()` would process the pages again. Engine therefore reuses `PageAcquisition` results, while S1 still performs every acquisition.
+  - Analysis runs first because it reads the most pages (TOC search, up to 40). The metadata stage (at most 30 pages) is then normally served entirely from the cache.
+- **Reuse rules:**
+  - Same session only, which means the same input bytes, OCR models and OCR threads.
+  - Same `mode` and raster limits, otherwise the page is read again.
+  - Never pages that were cancelled, or whose OCR was skipped (e.g. for budget), so the metadata stage can still OCR them.
+  - Reused pages keep their revision, configuration and model identity (no repointing, `AGENTS.md` §3.3). They cost no OCR budget.
+- **Assumptions:**
+  - `models` and `ocr_threads` are session settings and come from the analysis options; the metadata options' values are not used (documented in `book.hpp` and `API.md`).
+  - No new C API version: adding a function is compatible (`PDFB_C_API_VERSION` stays 1).
+  - Existing C++ structs are unchanged, so this is an additive minor release (0.3.0).
+- **Verified:**
+  - `engine_book` test with a counting fake OCR:
+    - 4 scanned pages are OCR'd exactly once (8 times with separate calls);
+    - both reports equal the separate calls' (metadata apart from `ocr_attempts_used`);
+    - same input identity;
+    - no reuse at a different DPI;
+    - cancellation reaches both stages without reusing cancelled pages;
+    - budget-skipped pages are OCR'd by the metadata stage;
+    - text-layer pages are reused with no OCR.
+  - The C API, Python and CLI (`cli_metadata`) checks pass. The `dev` suite is 22/22.
+  - Real OCR (Release, Ryzen 9 5900X, `tools/bench`):
+    - 4-page scan: 61.3 s → 31.2 s;
+    - 20-page scan: 305.1 s → 147.0 s;
+    - peak 2.32 GB unchanged;
+    - analysis reports identical, and metadata reports identical except `ocr_attempts_used`.

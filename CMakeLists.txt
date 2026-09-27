@@ -380,10 +380,10 @@ if(PDFBOOKMARK_BUILD_ENGINE)
   target_link_libraries(pdfbookmarkEngine PUBLIC pdfbookmarkText
     pdfbookmarkTocDetection pdfbookmarkTocParsing pdfbookmarkMapping
     pdfbookmarkWriterPlan pdfbookmarkWriter)
-  # S6 is optional: Engine gains extract_metadata() and the CLI its
+  # S6 is optional: Engine gains extract_metadata(), analyze_book() and the CLI its
   # 'metadata' command only when the subsystem is built.
   if(PDFBOOKMARK_BUILD_METADATA)
-    target_sources(pdfbookmarkEngine PRIVATE src/engine/metadata.cpp)
+    target_sources(pdfbookmarkEngine PRIVATE src/engine/metadata.cpp src/engine/book.cpp)
     target_link_libraries(pdfbookmarkEngine PUBLIC pdfbookmarkMetadata)
   endif()
   set_target_properties(pdfbookmarkEngine PROPERTIES
@@ -562,6 +562,18 @@ if(PDFBOOKMARK_BUILD_ENGINE)
       pdfbookmark_engine_runtime_for(pdfbookmark_engine_metadata_tests)
       add_test(NAME engine_metadata COMMAND pdfbookmark_engine_metadata_tests
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/metadata/fixtures/front_matter.pdf")
+      # analyze_book page reuse (issue #3); needs the fake-OCR test hook.
+      if(PDFBOOKMARK_TEST_HOOKS)
+        add_executable(pdfbookmark_engine_book_tests tests/engine/engine_book_test.cpp)
+        target_include_directories(pdfbookmark_engine_book_tests PRIVATE
+          "${CMAKE_CURRENT_SOURCE_DIR}/src/text")
+        target_compile_definitions(pdfbookmark_engine_book_tests PRIVATE PDFBOOKMARK_TEST_HOOKS)
+        target_link_libraries(pdfbookmark_engine_book_tests PRIVATE pdfbookmarkEngine)
+        ocr_enable_strict_warnings(pdfbookmark_engine_book_tests)
+        pdfbookmark_engine_runtime_for(pdfbookmark_engine_book_tests)
+        add_test(NAME engine_book COMMAND pdfbookmark_engine_book_tests
+          "${CMAKE_CURRENT_SOURCE_DIR}/tests/engine/fixtures")
+      endif()
       add_test(NAME cli_metadata COMMAND "${CMAKE_COMMAND}"
         "-DCLI=$<TARGET_FILE:pdfbookmarkCli>"
         "-DPDF=${CMAKE_CURRENT_SOURCE_DIR}/tests/metadata/fixtures/front_matter.pdf"

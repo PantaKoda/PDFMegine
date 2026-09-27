@@ -40,6 +40,7 @@ set(_sources
   ${_root}/src/engine/analysis_json.cpp
   ${_root}/src/engine/apply.cpp
   ${_root}/src/engine/metadata.cpp
+  ${_root}/src/engine/book.cpp
   ${_root}/src/engine/library.cpp
   ${_root}/src/engine/c_api.cpp)
 if(PDFBOOKMARK_TEXT_WITH_OCR)

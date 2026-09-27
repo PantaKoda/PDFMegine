@@ -111,6 +111,20 @@ int main(int argc, char** argv) {
     require(pdfb_analyze(input, NULL, NULL, NULL, NULL, NULL, NULL) == PDFB_INVALID_ARGUMENT,
             "NULL output pointer rejected");
 
+    /* Analysis and metadata in one run (issue #3). */
+    {
+        char* meta = NULL;
+        status = pdfb_analyze_book(input, "{\"mode\":\"embedded\",\"max_pages\":10}", NULL,
+                                   NULL, NULL, &report, &plan, &meta);
+        require(status == PDFB_OK && contains(report, "\"outcome\": \"plan_ready\"") && plan &&
+                    contains(meta, "\"kind\": \"pdfbookmark.metadata\""),
+                "analyze_book returns report, plan and metadata");
+        pdfb_free(report); pdfb_free(plan); pdfb_free(meta);
+        require(pdfb_analyze_book(input, NULL, NULL, NULL, NULL, &report, NULL, NULL) ==
+                    PDFB_INVALID_ARGUMENT && report == NULL,
+                "analyze_book needs a metadata output");
+    }
+
     /* Cancellation. */
     token = pdfb_cancel_token_new();
     require(token != NULL, "cancel token");

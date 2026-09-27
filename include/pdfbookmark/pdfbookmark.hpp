@@ -41,6 +41,7 @@
 
 #include <pdfbookmark/core/types.hpp>
 #include <pdfbookmark/engine/analysis.hpp>
+#include <pdfbookmark/engine/book.hpp>
 #include <pdfbookmark/engine/apply.hpp>
 #include <pdfbookmark/engine/metadata.hpp>
 #include <pdfbookmark/engine/text.hpp>
@@ -140,5 +141,11 @@ using engine::MetadataRunOptions;    ///< Pages to search (10, up to 30), OCR, h
 using engine::MetadataReport;        ///< Fields with status, evidence, alternatives.
 using engine::extract_metadata;      ///< (pdf, options, control)
 using engine::metadata_report_json;  ///< MetadataReport as JSON (schema 1).
+
+// ------------------------------------------------------------ both at once
+
+using engine::BookReport;            ///< analysis + metadata + pages_reused.
+using engine::analyze_book;          ///< (pdf, analysis options, metadata options, control, progress):
+                                     ///< one session; pages OCR'd once for both.
 
 }  // namespace pdfbookmark

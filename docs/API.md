@@ -151,6 +151,17 @@ auto meta = pdfbookmark::extract_metadata(pdf, MetadataRunOptions{});  // first 
 
 A copyright year is never reported as the publication year.
 
+### Contents and metadata together
+```cpp
+auto book = pdfbookmark::analyze_book(pdf, analysis_options, metadata_options, control, on_progress);
+// book.value().analysis  - as analyze();   book.value().metadata - as extract_metadata()
+// book.value().pages_reused - metadata pages taken from what the analysis already read
+```
+- **When you need both, use this instead of two calls.** The PDF is opened once, and pages already read for the contents are reused for the metadata instead of being read and OCR'd again.
+- On a scanned book this halves the work: for 4 scanned pages, 61 s becomes 31 s.
+- **Same results:** the results equal the two separate calls. Only the metadata report's `ocr_attempts_used` is lower.
+- **Settings:** `models` and `ocr_threads` come from the analysis options. Pages are reused only when both option sets use the same `mode` and `raster` settings, which the defaults do.
+
 ### Text
 ```cpp
 auto text = pdfbookmark::extract_text(pdf, std::vector<PageIndex>{0, 1, 2}, TextOptions{});
@@ -175,6 +186,7 @@ This returns positioned text regions per page, with the source (PDF text or OCR)
 | `pdfb_analyze` | Find the TOC and build a plan; also returns the ready plan's JSON, or `NULL` | reading options, `allow_partial`, `flat_outline`, `titles` (`"printed"`/`"chapter"`), `candidate`, `max_search_pages`, `max_evidence_pages` |
 | `pdfb_apply` | Write a NEW PDF with a plan's bookmarks | `replace_existing_output` |
 | `pdfb_extract_metadata` | Title, contributors, edition, years | reading options, `max_pages` |
+| `pdfb_analyze_book` | Both of the above in one run; pages are read and OCR'd once. Outputs: report, plan, metadata | the `pdfb_analyze` options plus `max_pages` |
 | `pdfb_validate_plan` | Structural check of an edited plan | none |
 | `pdfb_read_pdf_identity` | SHA-256 and page count | none |
 | `pdfb_find_models` | The OCR models found by the default search | none |

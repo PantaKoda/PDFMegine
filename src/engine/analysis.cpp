@@ -1,6 +1,7 @@
 #include <pdfbookmark/engine/analysis.hpp>
 
 #include "ledger.hpp"
+#include "runs.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -85,10 +86,10 @@ class Run {
 public:
     Run(text::TextDocument& document, const AnalysisOptions& options,
         const RunControl& control, const AnalysisProgressCallback& progress,
-        AnalysisReport& report)
+        AnalysisReport& report, detail::PageCache* cache)
         : document_(document), options_(options), control_(control),
           progress_(progress), report_(report),
-          ledger_(options.mode, options.raster, options.limits.ocr_budget) {}
+          ledger_(options.mode, options.raster, options.limits.ocr_budget, cache) {}
 
     Result<bool> execute();
 
@@ -613,26 +614,39 @@ const char* outcome_name(AnalysisOutcome outcome) {
     return "unknown";
 }
 
-Result<AnalysisReport> analyze(const std::filesystem::path& input,
-                               const AnalysisOptions& options,
-                               const RunControl& control,
-                               const AnalysisProgressCallback& progress) {
+std::optional<Error> detail::check_analysis_options(const AnalysisOptions& options) {
     const auto& l = options.limits;
     if (l.initial_pages == 0 || l.batch_pages == 0 || l.max_search_pages == 0 ||
         l.max_mapping_rounds == 0 || !std::isfinite(options.candidate_tie_ratio) ||
         options.candidate_tie_ratio <= 0 || options.candidate_tie_ratio > 1)
         return Error{ErrorCode::InvalidArgument, "Invalid analysis limits"};
+    return std::nullopt;
+}
+
+Result<AnalysisReport> detail::run_analysis(text::TextDocument& document,
+                                            const AnalysisOptions& options,
+                                            const RunControl& control,
+                                            const AnalysisProgressCallback& progress,
+                                            PageCache* cache) {
+    AnalysisReport report;
+    Run run(document, options, control, progress, report, cache);
+    const auto done = run.execute();
+    if (!done) return done.error();
+    return report;
+}
+
+Result<AnalysisReport> analyze(const std::filesystem::path& input,
+                               const AnalysisOptions& options,
+                               const RunControl& control,
+                               const AnalysisProgressCallback& progress) {
+    if (auto error = detail::check_analysis_options(options)) return *error;
     text::OpenOptions open;
     open.ocr_threads = options.ocr_threads;
     open.ocr_models = options.models;
     auto opened = text::TextAcquisition{}.open(input, open);
     if (!opened) return opened.error();
     auto document = opened.take();
-    AnalysisReport report;
-    Run run(document, options, control, progress, report);
-    const auto done = run.execute();
-    if (!done) return done.error();
-    return report;
+    return detail::run_analysis(document, options, control, progress, nullptr);
 }
 
 }  // namespace pdfbookmark::engine

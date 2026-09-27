@@ -114,6 +114,17 @@ class Library:
                                          callback, None, report.ref(), plan.ref()))
         return json.loads(report.text()), plan.text()
 
+    def analyze_book(self, pdf, progress=None, cancel=None, **options):
+        """analyze() and extract_metadata() in one run: pages read for the
+        contents are reused for the metadata (a scan is OCR'd once).
+        Returns (report, plan, metadata); plan is None when not ready."""
+        report, plan, meta = _OutString(self._c), _OutString(self._c), _OutString(self._c)
+        callback = _callback(progress)  # Kept alive during the call.
+        self._check(self._c.pdfb_analyze_book(_path(pdf), _options(options), _token(cancel),
+                                              callback, None, report.ref(), plan.ref(),
+                                              meta.ref()))
+        return json.loads(report.text()), plan.text(), json.loads(meta.text())
+
     def apply(self, pdf, output, plan, replace_existing_output=False, cancel=None):
         """Writes a NEW PDF with the plan's bookmarks. `plan` is JSON text or
         a dict. Returns the write result."""
@@ -163,6 +174,7 @@ class Library:
             "pdfb_find_models": (i, [_OUT]),
             "pdfb_extract_text": (i, [s, s, v, p, v, _OUT]),
             "pdfb_analyze": (i, [s, s, v, p, v, _OUT, _OUT]),
+            "pdfb_analyze_book": (i, [s, s, v, p, v, _OUT, _OUT, _OUT]),
             "pdfb_apply": (i, [s, s, s, s, v, _OUT]),
             "pdfb_extract_metadata": (i, [s, s, v, _OUT]),
             "pdfb_validate_plan": (i, [s, _OUT]),

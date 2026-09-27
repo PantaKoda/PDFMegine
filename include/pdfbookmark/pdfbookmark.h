@@ -154,6 +154,19 @@ PDFB_API pdfb_status pdfb_extract_metadata(const char* pdf_path, const char* opt
                                            pdfb_cancel_token* cancel,
                                            char** out_report_json);
 
+/* pdfb_analyze and pdfb_extract_metadata in one run: the PDF is opened once
+ * and pages read (and OCR'd) for the analysis are reused for the metadata,
+ * so a scanned book's front pages are OCR'd once instead of twice.
+ * Options: the pdfb_analyze options plus "max_pages" (metadata).
+ * Outputs: *out_report_json and *out_plan_json as pdfb_analyze (plan may be
+ * NULL if not wanted), *out_metadata_json as pdfb_extract_metadata.
+ * Results equal the two separate calls; the metadata report's OCR attempt
+ * count is lower because reused pages are not OCR'd again. */
+PDFB_API pdfb_status pdfb_analyze_book(const char* pdf_path, const char* options_json,
+                                       pdfb_cancel_token* cancel, pdfb_progress_fn progress,
+                                       void* user_data, char** out_report_json,
+                                       char** out_plan_json, char** out_metadata_json);
+
 /* ------------------------------------------------------------ plans */
 
 /* Structural check of a plan (ids, parents, cycles, titles, page bounds).

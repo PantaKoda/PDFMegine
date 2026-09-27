@@ -35,6 +35,7 @@ pdfbookmark_deploy_runtime(<app>)                         # DLLs + OCR models ne
 | Build paths from wide strings: `std::filesystem::path(qstring.toStdWString())`, never `toStdString()` or `toLocal8Bit()`. | Non-ASCII file names would break. |
 | Call `analyze`, `apply`, `extract_text` and `extract_metadata` on a **worker thread** (`QThreadPool`, `QtConcurrent`, `std::thread`), never on the GUI thread. | They take seconds to minutes, more with OCR on scanned books. |
 | Progress callbacks run on that worker thread. Send them to the GUI with `QMetaObject::invokeMethod(obj, …, Qt::QueuedConnection)` or a queued signal. | Qt objects belong to their thread. |
+| Need both the contents and the metadata of a book? Call **`analyze_book()`** (C API `pdfb_analyze_book`), not `analyze()` and then `extract_metadata()`. | It reads and OCRs each page once; two calls OCR the front pages twice. |
 | Run one library operation at a time. | The PDF engine is shared process-wide and serializes calls anyway. |
 | Cancel with `std::atomic_bool` and `pdfbookmark::RunControl{&flag}`. Keep the flag alive until the call returns. | Cancellation is cooperative and checked between pages. |
 | Check `Result<T>` with `if (!r)`, then `r.error().message`. | Errors are values, not exceptions. |

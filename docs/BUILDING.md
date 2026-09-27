@@ -173,6 +173,7 @@ $exe = "out/build/release/pdfbookmark.exe"; $models = "models"
 pwsh tools/bench/ocr_resources.ps1 text4     $exe text     scan4.pdf --mode ocr --models $models --json t4.json --force
 pwsh tools/bench/ocr_resources.ps1 metadata4 $exe metadata scan4.pdf --models $models --json m4.json --force
 pwsh tools/bench/ocr_resources.ps1 analyze4  $exe analyze  scan4.pdf --models $models --report a4.json --force
+pwsh tools/bench/ocr_resources.ps1 book4     $exe analyze  scan4.pdf --models $models --report b4.json --metadata bm4.json --force
 pwsh tools/bench/ocr_resources.ps1 text20    $exe text     scan20.pdf --mode ocr --models $models --json t20.json --force
 ```
 
