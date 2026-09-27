@@ -161,6 +161,8 @@ auto book = pdfbookmark::analyze_book(pdf, analysis_options, metadata_options, c
 - On a scanned book this halves the work: for 4 scanned pages, 61 s becomes 31 s.
 - **Same results:** the results equal the two separate calls. Only the metadata report's `ocr_attempts_used` is lower.
 - **Settings:** `models` and `ocr_threads` come from the analysis options. Pages are reused only when both option sets use the same `mode` and `raster` settings, which the defaults do.
+- **OCR budget:** `analysis.limits.ocr_budget` caps OCR for the whole run. The metadata stage may use only what the analysis left, and at most `metadata.ocr_budget` of it. Reused pages cost nothing. In the C API and CLI, the single `ocr_budget` / `--ocr-budget` is that run-wide cap.
+- **Cancellation** applies to both stages. The CLI exits with 4 if either stage was cancelled; completed outputs are still written, but no PDF is.
 
 ### Text
 ```cpp

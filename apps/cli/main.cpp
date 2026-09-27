@@ -4,6 +4,7 @@
 
 #include <pdfbookmark/pdfbookmark.hpp>  // The library's stable public API.
 
+#include "outputs.hpp"
 #include "page_selection.hpp"
 
 #include <algorithm>
@@ -33,8 +34,11 @@ namespace fs = std::filesystem;
 
 namespace {
 
-constexpr int kComplete = 0, kFailed = 1, kUsage = 2, kPartial = 3,
-              kCancelled = 4;
+using pdfbookmark::cli::kCancelled;
+using pdfbookmark::cli::kComplete;
+using pdfbookmark::cli::kFailed;
+using pdfbookmark::cli::kPartial;
+using pdfbookmark::cli::kUsage;
 
 std::atomic_bool g_cancel{false};
 extern "C" void on_interrupt(int) { g_cancel.store(true); }
@@ -543,6 +547,11 @@ int run_analyze(const std::vector<std::string>& args, const std::string& argv0,
             output_path = fs::u8path(output_target);
         }
     }
+    if (const auto collision = cli::output_collision({{"--report", report_path},
+                                                       {"--plan", plan_path},
+                                                       {"--metadata", metadata_path},
+                                                       {"--output", output_path}}))
+        return usage(*collision);
     if (!output_allowed(report_path, *common.input, common.force) ||
         !output_allowed(plan_path, *common.input, common.force) ||
         !output_allowed(output_path, *common.input, common.force) ||
@@ -559,6 +568,7 @@ int run_analyze(const std::vector<std::string>& args, const std::string& argv0,
         std::cerr << name << ": " << p.stage << ", " << p.pages_acquired << " pages read\n";
     };
     engine::AnalysisReport r;
+    bool metadata_cancelled = false;
 #ifdef PDFBOOKMARK_WITH_METADATA
     if (metadata_path) {
         // One run, one session: pages read for the TOC are reused for the
@@ -577,6 +587,7 @@ int run_analyze(const std::vector<std::string>& args, const std::string& argv0,
             return kFailed;
         std::cerr << name << ": metadata written (" << book.value().pages_reused
                   << " pages reused from the analysis)\n";
+        metadata_cancelled = book.value().metadata.cancelled;
         r = std::move(book.value().analysis);
     } else
 #endif
@@ -628,8 +639,18 @@ int run_analyze(const std::vector<std::string>& args, const std::string& argv0,
     };
     list(r.plan.choices, "choice");
     list(r.plan.blockers, "blocked");
-    if (r.outcome == engine::AnalysisOutcome::Cancelled) return kCancelled;
-    if (r.outcome != engine::AnalysisOutcome::PlanReady) {
+    // Completed outputs above are kept; a cancelled stage still ends the run
+    // with the cancellation status and no PDF is written (PR #4 review).
+    const int status = cli::analysis_exit_code(
+        r.outcome == engine::AnalysisOutcome::Cancelled, metadata_cancelled,
+        r.outcome == engine::AnalysisOutcome::PlanReady);
+    if (status == kCancelled) {
+        if (metadata_cancelled && r.outcome != engine::AnalysisOutcome::Cancelled)
+            std::cerr << name << ": metadata extraction was cancelled"
+                      << (add ? "; no PDF written" : "") << '\n';
+        return kCancelled;
+    }
+    if (status == kPartial) {
         std::cerr << name << ": no ready plan"
                   << (plan_path ? "; plan file not written" : "")
                   << (add ? "; no PDF written" : "") << '\n';

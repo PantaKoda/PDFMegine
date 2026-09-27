@@ -160,6 +160,7 @@ PDFB_API pdfb_status pdfb_extract_metadata(const char* pdf_path, const char* opt
  * Options: the pdfb_analyze options plus "max_pages" (metadata).
  * Outputs: *out_report_json and *out_plan_json as pdfb_analyze (plan may be
  * NULL if not wanted), *out_metadata_json as pdfb_extract_metadata.
+ * "ocr_budget" caps OCR for the WHOLE run (both stages together).
  * Results equal the two separate calls; the metadata report's OCR attempt
  * count is lower because reused pages are not OCR'd again. */
 PDFB_API pdfb_status pdfb_analyze_book(const char* pdf_path, const char* options_json,

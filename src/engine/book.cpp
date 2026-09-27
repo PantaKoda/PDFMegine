@@ -3,6 +3,8 @@
 #include "ledger.hpp"
 #include "runs.hpp"
 
+#include <algorithm>
+
 namespace pdfbookmark::engine {
 
 Result<BookReport> analyze_book(const std::filesystem::path& input,
@@ -26,7 +28,14 @@ Result<BookReport> analyze_book(const std::filesystem::path& input,
     auto analysed = detail::run_analysis(document, analysis, control, progress, &cache);
     if (!analysed) return analysed.error();
     const std::size_t before = cache.reused();
-    auto described = detail::run_metadata(document, metadata, control, &cache, progress);
+    // One run-wide OCR cap: analysis.limits.ocr_budget. The metadata stage
+    // gets what the analysis left, further limited by its own budget; cache
+    // hits cost nothing (PR #4 review).
+    MetadataRunOptions stage = metadata;
+    const std::size_t used = analysed.value().ocr_attempts_used;
+    const std::size_t left = analysis.limits.ocr_budget > used ? analysis.limits.ocr_budget - used : 0;
+    stage.ocr_budget = std::min(metadata.ocr_budget, left);
+    auto described = detail::run_metadata(document, stage, control, &cache, progress);
     if (!described) return described.error();
 
     BookReport book;

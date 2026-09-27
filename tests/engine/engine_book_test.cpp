@@ -22,6 +22,9 @@ using namespace pdfbookmark;
 namespace {
 
 std::atomic<int> ocr_calls{0};
+// When set, the fake sets *cancel_flag on OCR call number cancel_on_call.
+std::atomic_bool* cancel_flag = nullptr;
+int cancel_on_call = 0;
 
 void require(bool condition, const std::string& message) {
     if (!condition) {
@@ -33,7 +36,7 @@ void require(bool condition, const std::string& message) {
 class CountingOcr final : public text::detail::OcrBackend {
 public:
     std::vector<text::detail::OcrLine> run(const text::detail::Raster&) override {
-        ++ocr_calls;
+        if (++ocr_calls == cancel_on_call && cancel_flag) cancel_flag->store(true);
         text::detail::OcrLine line;
         line.text = "Recovered page body";
         line.confidence = 0.9f;
@@ -122,15 +125,45 @@ int main(int argc, char** argv) {
                 cancelled.value().metadata.cancelled && cancelled.value().pages_reused == 0,
             "cancellation reaches both stages without reusing cancelled pages");
 
-    // 6. Budget-skipped OCR is not reused: metadata may still OCR the page.
+    // 6. One run-wide OCR budget (PR #4 review): analysis.limits.ocr_budget
+    //    caps both stages together; cache hits are free. Budget-skipped
+    //    pages are not reused, but with the cap spent they get no OCR either.
     ocr_calls = 0;
     auto tight = analysis;
     tight.limits.ocr_budget = 1;
     auto budget = engine::analyze_book(scan, tight, metadata);
     require(static_cast<bool>(budget), "tight budget run");
-    require(budget.value().analysis.ocr_attempts_used == 1, "analysis spent its budget of 1");
-    require(budget.value().pages_reused == 1 && budget.value().metadata.ocr_attempts_used == 3,
-            "the OCR'd page is reused; the 3 budget-skipped pages are OCR'd by metadata");
+    const auto& t = budget.value();
+    require(ocr_calls == 1, "a run-wide budget of 1 allows exactly 1 OCR attempt in total (got " +
+                                std::to_string(ocr_calls.load()) + ")");
+    require(t.analysis.ocr_attempts_used + t.metadata.ocr_attempts_used == 1,
+            "reported attempts add up to the cap");
+    require(t.pages_reused == 1 && t.metadata.ocr_budget == 0,
+            "the OCR'd page is reused; metadata's effective allowance is what was left (0)");
+    //    With room left under the cap, the metadata stage may use it.
+    ocr_calls = 0;
+    auto roomy = analysis;
+    roomy.limits.ocr_budget = 6;
+    auto other_dpi = metadata;
+    other_dpi.raster.dpi = 200;  // No reuse: metadata needs its own OCR.
+    auto shared = engine::analyze_book(scan, roomy, other_dpi);
+    require(shared && ocr_calls == 6 && shared.value().metadata.ocr_attempts_used == 2 &&
+                shared.value().metadata.ocr_budget == 2,
+            "metadata gets the 2 attempts the analysis left under the cap of 6");
+
+    // 6b. Cancellation DURING the metadata stage: the analysis stays complete,
+    //     the metadata report says cancelled (the CLI maps this to exit 4).
+    ocr_calls = 0;
+    std::atomic_bool mid{false};
+    cancel_flag = &mid;
+    cancel_on_call = 5;  // Calls 1-4: analysis; call 5: first metadata page.
+    auto during = engine::analyze_book(scan, analysis, other_dpi, RunControl{&mid});
+    cancel_flag = nullptr;
+    cancel_on_call = 0;
+    require(during && during.value().analysis.outcome != engine::AnalysisOutcome::Cancelled &&
+                during.value().metadata.cancelled,
+            "cancellation during metadata: analysis complete, metadata cancelled");
+    require(ocr_calls == 5, "no OCR after the cancellation point");
 
     // 7. Text-layer PDF: pages are reused too (no OCR involved at all).
     ocr_calls = 0;

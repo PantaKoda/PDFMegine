@@ -330,3 +330,16 @@ S6 decisions are recorded with its contract in `docs/handoffs/S6_HANDOFF.md`.
     - 20-page scan: 305.1 s → 147.0 s;
     - peak 2.32 GB unchanged;
     - analysis reports identical, and metadata reports identical except `ocr_attempts_used`.
+- **Amended after the PR #4 review (27 Sep 2026)**, which found three P2 problems. All are fixed, each with regressions at the Engine, C API and CLI levels:
+  1. **The OCR budget reset between stages.** Each stage had its own ledger with a full allowance, so a single `ocr_budget` of 1 allowed 2 attempts.
+     - Now `analysis.limits.ocr_budget` caps the whole run. The metadata stage gets `min(metadata.ocr_budget, what the analysis left)`, reported as its `ocr_budget`. Cache hits stay free.
+     - **Assumption:** a sequential two-stage run needs no shared counter object; handing the remainder to the second stage is exact.
+     - **Tests:** `engine_book` (fake OCR: exactly 1 call at cap 1; 2 left for metadata at cap 6), `library_c_api` and `cli_book` (real OCR, 4 scanned pages, `ocr_budget` 1: 1 attempt in total).
+  2. **CLI cancellation during the metadata stage exited 0.**
+     - The exit status now comes from `cli::analysis_exit_code(analysis_cancelled, metadata_cancelled, plan_ready)`. Completed outputs are still written; the run exits 4 and `add` writes no PDF.
+     - **Tests:** `engine_book` (cancellation during metadata: analysis complete, metadata cancelled) and `cli_outputs` (exit-status rule).
+  3. **Output destinations could collide.** For example `--report x --metadata x` overwrote one with the other.
+     - All requested outputs (`--report`, `--plan`, `--metadata`, `add --output`) are now compared pairwise **before any work**, by `cli::output_collision`.
+     - The comparison uses normalised absolute paths (`weakly_canonical`, case-insensitive on Windows) and `equivalent()` for existing files, which covers hard links. A collision exits 2 (usage) and nothing is written.
+     - **Tests:** `cli_outputs` (the spellings `.` and `..`, case, a hard link, pairs) and `cli_book`, which checks exit 2 and that no file is created or changed, even with `--force`.
+

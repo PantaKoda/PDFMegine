@@ -26,9 +26,15 @@ struct BookReport {
 // - A page is reused only when both stages use the same `mode` and `raster`
 //   (the defaults do). Pages that were cancelled, or whose OCR was skipped for
 //   budget, are read again. Reused pages cost no OCR budget.
+// - OCR budget: `analysis.limits.ocr_budget` caps the WHOLE run. The metadata
+//   stage may use only what the analysis left, and at most
+//   `metadata.ocr_budget` of it; the metadata report's `ocr_budget` is that
+//   effective allowance.
 // - Both reports describe the same input bytes (one immutable session copy).
-// Results equal separate analyze() and extract_metadata() calls; only the
-// OCR attempt counts differ, because reused pages are not OCR'd again.
+// With enough OCR budget, results equal separate analyze() and
+// extract_metadata() calls; only the OCR attempt counts differ, because
+// reused pages are not OCR'd again. (Separate calls each get a full budget,
+// so under a tight budget they may OCR more pages than this run allows.)
 Result<BookReport> analyze_book(const std::filesystem::path& input,
                                 const AnalysisOptions& analysis = {},
                                 const MetadataRunOptions& metadata = {},
