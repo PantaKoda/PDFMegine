@@ -468,9 +468,14 @@ pdfb_status pdfb_extract_metadata(const char* pdf_path, const char* options_json
 
 pdfb_status pdfb_analyze_book(const char* pdf_path, const char* options_json,
                               pdfb_cancel_token* cancel, pdfb_progress_fn progress,
-                              void* user_data, char** out_report_json, char** out_plan_json,
+                              pdfb_metadata_fn on_metadata, void* user_data,
+                              char** out_report_json, char** out_plan_json,
                               char** out_metadata_json) {
-    return guarded({out_report_json, out_plan_json, out_metadata_json}, [&] {
+    // The metadata output is managed outside guarded(): it must survive an
+    // analysis-only failure (PR #4 consumer review).
+    if (out_metadata_json) *out_metadata_json = nullptr;
+    char* metadata_out = nullptr;
+    const pdfb_status status = guarded({out_report_json, out_plan_json}, [&] {
         require_out(out_report_json, "out_report_json");
         require_out(out_metadata_json, "out_metadata_json");
         const auto input = path_arg(pdf_path, "pdf_path");
@@ -479,13 +484,25 @@ pdfb_status pdfb_analyze_book(const char* pdf_path, const char* options_json,
         const Options options(options_json, with_reading(keys));
         const Reading reading = reading_of(options);
         const AnalysisOptions analysis = analysis_of(options, reading);
-        const auto book = take(analyze_book(input, analysis, metadata_of(options, reading),
-                                            control_of(cancel), progress_of(progress, user_data)));
-        *out_report_json = copy_out(analysis_report_json(book.analysis, analysis));
-        *out_metadata_json = copy_out(metadata_report_json(book.metadata));
-        if (out_plan_json && book.analysis.plan.ready && book.analysis.plan.plan)
-            *out_plan_json = copy_out(plan_to_json(*book.analysis.plan.plan));
+        const auto book = take(analyze_book(
+            input, analysis, metadata_of(options, reading), control_of(cancel),
+            progress_of(progress, user_data), [&](const MetadataReport& metadata) {
+                const std::string json = metadata_report_json(metadata);
+                metadata_out = copy_out(json);
+                if (on_metadata) on_metadata(user_data, json.c_str());
+            }));
+        if (book.analysis_error)
+            fail(status_of(book.analysis_error->code),
+                 "TOC analysis failed (metadata is available): " + book.analysis_error->message);
+        *out_report_json = copy_out(analysis_report_json(*book.analysis, analysis));
+        if (out_plan_json && book.analysis->plan.ready && book.analysis->plan.plan)
+            *out_plan_json = copy_out(plan_to_json(*book.analysis->plan.plan));
     });
+    if (out_metadata_json)
+        *out_metadata_json = metadata_out;
+    else
+        std::free(metadata_out);
+    return status;
 }
 
 pdfb_status pdfb_validate_plan(const char* plan_json, char** out_result_json) {

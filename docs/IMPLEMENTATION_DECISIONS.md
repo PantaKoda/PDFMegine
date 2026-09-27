@@ -342,4 +342,23 @@ S6 decisions are recorded with its contract in `docs/handoffs/S6_HANDOFF.md`.
      - All requested outputs (`--report`, `--plan`, `--metadata`, `add --output`) are now compared pairwise **before any work**, by `cli::output_collision`.
      - The comparison uses normalised absolute paths (`weakly_canonical`, case-insensitive on Windows) and `equivalent()` for existing files, which covers hard links. A collision exits 2 (usage) and nothing is written.
      - **Tests:** `cli_outputs` (the spellings `.` and `..`, case, a hard link, pairs) and `cli_book`, which checks exit 2 and that no file is created or changed, even with `--force`.
+- **Amended after the second PR #4 review (consumer side, 27 Sep 2026): metadata first.**
+  - **Change:**
+    - `analyze_book` now runs the metadata stage **before** the TOC analysis, and hands the metadata to an optional `on_metadata` callback (C: `pdfb_metadata_fn`; Python: `on_metadata`; CLI: `--metadata` is written at that moment).
+    - An analysis error no longer fails the call: `BookReport::analysis` is optional, and `analysis_error` says why. In the C API, `*out_metadata_json` survives an analysis-only failure, and the function then returns the analysis error status.
+    - The OCR budget stays one run-wide cap (`analysis.limits.ocr_budget`). The metadata stage may use at most its own budget of it; the analysis gets the rest.
+    - Progress counts are per stage (documented).
+  - **Why:** analysis-first delivered the title only after the whole TOC analysis, about 5-8 minutes on a scanned book, and lost the metadata when the analysis failed. MyBooksLibrary requires metadata first, published independently (its AGENTS.md §8), and kept when the TOC analysis fails (§6). With analysis-first, the SDK brief was steering its agent into violating both.
+  - **Why the reversed order costs no OCR:** with the default limits, the metadata pages (at most 30) lie inside the analysis's first 40-page batch, so the pages OCR'd are the same union in either order. Measured: still one OCR per page (`engine_book` case 1).
+  - **Assumptions:**
+    - Under a tight run-wide budget, the metadata stage now spends first. That is the right priority for clients that publish metadata first; the analysis gets the remainder.
+    - Errors in opening the input or in the metadata stage still fail the call, because they indicate problems at the session level.
+  - **Tests:** `engine_book` checks:
+    - metadata delivered before any analysis stage ran, and equal to the returned report;
+    - the analysis reuses the metadata's 4 pages (4 OCR calls in total);
+    - a cancellation during the analysis keeps the metadata complete;
+    - an S4 error after acquisition (an invalid numbering section) returns `analysis_error` with the metadata delivered and returned;
+    - results equal separate calls.
+
+    `library_c_api` checks the callback and the real-OCR run-wide cap (the metadata stage now does the 1 OCR), and `library_python` checks the callback.
 

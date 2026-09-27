@@ -144,8 +144,9 @@ using engine::metadata_report_json;  ///< MetadataReport as JSON (schema 1).
 
 // ------------------------------------------------------------ both at once
 
-using engine::BookReport;            ///< analysis + metadata + pages_reused.
-using engine::analyze_book;          ///< (pdf, analysis options, metadata options, control, progress):
-                                     ///< one session; pages OCR'd once for both.
+using engine::BookReport;            ///< metadata + analysis (or analysis_error) + pages_reused.
+using engine::MetadataCallback;      ///< Receives the metadata before the TOC analysis starts.
+using engine::analyze_book;          ///< (pdf, analysis options, metadata options, control, progress,
+                                     ///< on_metadata): metadata first, one session, pages OCR'd once.
 
 }  // namespace pdfbookmark

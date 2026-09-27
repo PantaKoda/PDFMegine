@@ -36,13 +36,13 @@ expect_exit(1 "${CLI}" metadata "${PDF}" --mode embedded --json "${WORK}/meta.js
 expect_exit(3 "${CLI}" metadata "${PDF}" --mode embedded --max-pages 2)
 expect_exit(0 "${CLI}" metadata --help)
 # analyze --metadata: TOC analysis and metadata in one run (issue #3). This
-# fixture has no TOC (exit 3), but the metadata file is still written, with
-# the same title as the metadata command.
+# fixture has no TOC (exit 3), but the metadata file is still written (first,
+# before the TOC analysis), with the same title as the metadata command.
 expect_exit(3 "${CLI}" analyze "${PDF}" --mode embedded --report "${WORK}/book-report.json"
             --metadata "${WORK}/book-meta.json")
 file(READ "${WORK}/book-meta.json" book_json)
 string(JSON book_title GET "${book_json}" fields title value title)
-if(NOT book_title STREQUAL "Parallel Worlds" OR NOT LAST_ERR MATCHES "pages reused from the analysis")
+if(NOT book_title STREQUAL "Parallel Worlds" OR NOT LAST_ERR MATCHES "metadata written to")
   message(FATAL_ERROR "analyze --metadata: ${book_title}
 ${LAST_ERR}")
 endif()

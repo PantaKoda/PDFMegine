@@ -29,6 +29,13 @@ static long attempts(const char* json) {
 }
 
 static size_t g_progress_calls = 0;
+static int g_metadata_calls = 0;
+static void on_metadata(void* user_data, const char* metadata_json) {
+    (void)user_data;
+    require(strstr(metadata_json, "\"kind\": \"pdfbookmark.metadata\"") != NULL,
+            "early metadata is a metadata report");
+    ++g_metadata_calls;
+}
 static void on_progress(void* user_data, const char* stage, size_t done, size_t total) {
     (void)stage; (void)done; (void)total;
     require(user_data == &g_progress_calls, "progress receives user_data");
@@ -121,12 +128,13 @@ int main(int argc, char** argv) {
     {
         char* meta = NULL;
         status = pdfb_analyze_book(input, "{\"mode\":\"embedded\",\"max_pages\":10}", NULL,
-                                   NULL, NULL, &report, &plan, &meta);
+                                   NULL, on_metadata, NULL, &report, &plan, &meta);
         require(status == PDFB_OK && contains(report, "\"outcome\": \"plan_ready\"") && plan &&
                     contains(meta, "\"kind\": \"pdfbookmark.metadata\""),
                 "analyze_book returns report, plan and metadata");
+        require(g_metadata_calls == 1, "the metadata callback fired once");
         pdfb_free(report); pdfb_free(plan); pdfb_free(meta);
-        require(pdfb_analyze_book(input, NULL, NULL, NULL, NULL, &report, NULL, NULL) ==
+        require(pdfb_analyze_book(input, NULL, NULL, NULL, NULL, NULL, &report, NULL, NULL) ==
                     PDFB_INVALID_ARGUMENT && report == NULL,
                 "analyze_book needs a metadata output");
     }
@@ -139,9 +147,9 @@ int main(int argc, char** argv) {
                  argv[4]);
         for (char* c = options; *c; ++c)
             if (*c == '\\') *c = '/';  /* JSON-safe Windows path. */
-        status = pdfb_analyze_book(scan, options, NULL, NULL, NULL, &report, NULL, &meta);
+        status = pdfb_analyze_book(scan, options, NULL, NULL, NULL, NULL, &report, NULL, &meta);
         require(status == PDFB_OK, "analyze_book on a scan with real OCR");
-        require(attempts(report) + attempts(meta) == 1 && attempts(report) == 1,
+        require(attempts(report) + attempts(meta) == 1 && attempts(meta) == 1,
                 "run-wide ocr_budget 1: exactly one OCR attempt across both stages");
         pdfb_free(report); pdfb_free(meta);
     }

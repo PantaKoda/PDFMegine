@@ -100,8 +100,10 @@ const char* kAnalyzeHelp =
     "  --report PATH|-          Write the detailed JSON report here\n"
     "                           ('-' = standard output, the default)\n"
     "  --metadata PATH          Also extract title, authors, edition and years\n"
-    "                           to this JSON file, in the same run (pages read\n"
-    "                           for the contents are reused, not OCR'd twice)\n"
+    "                           to this JSON file, in the same run: written first,\n"
+    "                           before the contents are analysed, and its pages\n"
+    "                           are reused (not OCR'd twice). Kept if the\n"
+    "                           analysis then fails.\n"
     "  --force                  Replace existing plan/report files\n"
     "\n"
     "Choices:\n"
@@ -140,7 +142,7 @@ const char* kAddHelp =
     "  --plan PATH              Also save the bookmark plan\n"
     "  --report PATH            Also save the detailed JSON report\n"
     "  --metadata PATH          Also save the book's metadata (title, authors, ...)\n"
-    "                           as JSON, reusing the pages already read\n"
+    "                           as JSON, written first; its pages are reused\n"
     "  --force                  Replace existing output files\n"
     "\n"
     "Choices:\n"
@@ -571,24 +573,37 @@ int run_analyze(const std::vector<std::string>& args, const std::string& argv0,
     bool metadata_cancelled = false;
 #ifdef PDFBOOKMARK_WITH_METADATA
     if (metadata_path) {
-        // One run, one session: pages read for the TOC are reused for the
-        // metadata instead of being read (and OCR'd) again.
+        // One run, one session, metadata first: the metadata file is written
+        // as soon as it is ready (before the long TOC analysis), and the
+        // analysis reuses its pages instead of reading (and OCR'ing) them
+        // again. A failed analysis keeps the metadata file (exit 1).
         engine::MetadataRunOptions meta;
         meta.mode = common.mode;
         meta.raster = common.raster;
         meta.ocr_budget = common.ocr_budget;
-        auto book = engine::analyze_book(*common.input, options, meta, RunControl{&g_cancel},
-                                         on_progress);
+        bool metadata_written = false;
+        auto book = engine::analyze_book(
+            *common.input, options, meta, RunControl{&g_cancel}, on_progress,
+            [&](const engine::MetadataReport& metadata) {
+                metadata_written = emit(metadata_path, engine::metadata_report_json(metadata));
+                if (metadata_written)
+                    std::cerr << name << ": metadata written to " << metadata_path->u8string()
+                              << '\n';
+            });
         if (!book) {
             std::cerr << "error: " << book.error().message << '\n';
             return kFailed;
         }
-        if (!emit(metadata_path, engine::metadata_report_json(book.value().metadata)))
+        if (!metadata_written) return kFailed;
+        if (book.value().analysis_error) {
+            std::cerr << "error: TOC analysis failed (the metadata was written): "
+                      << book.value().analysis_error->message << '\n';
             return kFailed;
-        std::cerr << name << ": metadata written (" << book.value().pages_reused
-                  << " pages reused from the analysis)\n";
+        }
+        std::cerr << name << ": " << book.value().pages_reused
+                  << " pages reused from the metadata stage\n";
         metadata_cancelled = book.value().metadata.cancelled;
-        r = std::move(book.value().analysis);
+        r = std::move(*book.value().analysis);
     } else
 #endif
     {

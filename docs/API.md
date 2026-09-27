@@ -153,16 +153,22 @@ A copyright year is never reported as the publication year.
 
 ### Contents and metadata together
 ```cpp
-auto book = pdfbookmark::analyze_book(pdf, analysis_options, metadata_options, control, on_progress);
-// book.value().analysis  - as analyze();   book.value().metadata - as extract_metadata()
-// book.value().pages_reused - metadata pages taken from what the analysis already read
+auto book = pdfbookmark::analyze_book(pdf, analysis_options, metadata_options, control, on_progress,
+    [&](const pdfbookmark::MetadataReport& m) { show_title(m); });   // early, optional
+// book.value().metadata        - as extract_metadata(), always present on success
+// book.value().analysis        - as analyze(); empty if the analysis failed ...
+// book.value().analysis_error  - ... and then this says why
+// book.value().pages_reused    - analysis pages taken from what the metadata stage read
 ```
-- **When you need both, use this instead of two calls.** The PDF is opened once, and pages already read for the contents are reused for the metadata instead of being read and OCR'd again.
-- On a scanned book this halves the work: for 4 scanned pages, 61 s becomes 31 s.
-- **Same results:** the results equal the two separate calls. Only the metadata report's `ocr_attempts_used` is lower.
-- **Settings:** `models` and `ocr_threads` come from the analysis options. Pages are reused only when both option sets use the same `mode` and `raster` settings, which the defaults do.
-- **OCR budget:** `analysis.limits.ocr_budget` caps OCR for the whole run. The metadata stage may use only what the analysis left, and at most `metadata.ocr_budget` of it. Reused pages cost nothing. In the C API and CLI, the single `ocr_budget` / `--ocr-budget` is that run-wide cap.
+- **Use this when you need both.** The PDF is opened once, and the pages read for the metadata are reused by the TOC analysis instead of being read and OCR'd again. On a scanned book this halves the work: for 4 scanned pages, 61 s becomes 31 s.
+- **Metadata first, and early.** The metadata stage runs first, and `on_metadata` receives its report before the (much longer) TOC analysis starts, so a client can show the title within about a minute on a scanned book instead of after the whole analysis.
+- **Metadata survives a failed analysis.** An analysis error is returned in `analysis_error`, and the metadata is still returned. Only errors in opening the file or in the metadata stage fail the whole call.
+- **Same results:** with enough OCR budget, results equal the two separate calls. Only the analysis report's `ocr_attempts_used` is lower.
+- **Settings:** `models` and `ocr_threads` come from the analysis options. Pages are reused only when both option sets use the same `mode` and `raster` settings, which the defaults do. With the defaults the metadata pages (at most 30) lie inside the analysis's first 40-page batch, so every page is OCR'd once.
+- **OCR budget:** `analysis.limits.ocr_budget` caps OCR for the whole run. The metadata stage may use at most `metadata.ocr_budget` of it, and the analysis gets what is left. Reused pages cost nothing. Each report's `ocr_budget` is its stage's effective allowance. In the C API and CLI, the single `ocr_budget` / `--ocr-budget` is that run-wide cap.
+- **Progress** reports stage `"metadata"` first, then the analysis stages. `pages_acquired` counts pages of the current stage, so it restarts when the analysis begins.
 - **Cancellation** applies to both stages. The CLI exits with 4 if either stage was cancelled; completed outputs are still written, but no PDF is.
+- **C API:** `pdfb_analyze_book(…, progress, on_metadata, user_data, &report, &plan, &metadata)`. `*out_metadata_json` is set whenever the metadata stage completed, **even when the call then returns an analysis error**. Free it in both cases.
 
 ### Text
 ```cpp

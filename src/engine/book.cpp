@@ -11,7 +11,8 @@ Result<BookReport> analyze_book(const std::filesystem::path& input,
                                 const AnalysisOptions& analysis,
                                 const MetadataRunOptions& metadata,
                                 const RunControl& control,
-                                const AnalysisProgressCallback& progress) {
+                                const AnalysisProgressCallback& progress,
+                                const MetadataCallback& on_metadata) {
     if (auto error = detail::check_analysis_options(analysis)) return *error;
     if (auto error = detail::check_metadata_options(metadata)) return *error;
     text::OpenOptions open;
@@ -21,27 +22,31 @@ Result<BookReport> analyze_book(const std::filesystem::path& input,
     if (!opened) return opened.error();
     auto document = opened.take();
 
-    // Analysis first: it reads the most pages (the TOC search), so the
-    // metadata stage (front matter, at most 30 pages) is usually served
-    // entirely from the cache.
+    // Metadata first (PR #4 consumer review): clients publish the title
+    // early and keep it when the TOC analysis fails. The analysis then
+    // reuses those pages from the cache, so no page is OCR'd twice.
+    // One run-wide OCR cap, analysis.limits.ocr_budget; cache hits are free.
+    const std::size_t cap = analysis.limits.ocr_budget;
     detail::PageCache cache;
-    auto analysed = detail::run_analysis(document, analysis, control, progress, &cache);
-    if (!analysed) return analysed.error();
-    const std::size_t before = cache.reused();
-    // One run-wide OCR cap: analysis.limits.ocr_budget. The metadata stage
-    // gets what the analysis left, further limited by its own budget; cache
-    // hits cost nothing (PR #4 review).
-    MetadataRunOptions stage = metadata;
-    const std::size_t used = analysed.value().ocr_attempts_used;
-    const std::size_t left = analysis.limits.ocr_budget > used ? analysis.limits.ocr_budget - used : 0;
-    stage.ocr_budget = std::min(metadata.ocr_budget, left);
-    auto described = detail::run_metadata(document, stage, control, &cache, progress);
+    MetadataRunOptions metadata_stage = metadata;
+    metadata_stage.ocr_budget = std::min(metadata.ocr_budget, cap);
+    auto described = detail::run_metadata(document, metadata_stage, control, &cache, progress);
     if (!described) return described.error();
+    if (on_metadata) on_metadata(described.value());
+
+    AnalysisOptions analysis_stage = analysis;
+    const std::size_t used = described.value().ocr_attempts_used;
+    analysis_stage.limits.ocr_budget = cap > used ? cap - used : 0;
+    const std::size_t before = cache.reused();
+    auto analysed = detail::run_analysis(document, analysis_stage, control, progress, &cache);
 
     BookReport book;
-    book.analysis = analysed.take();
     book.metadata = described.take();
     book.pages_reused = cache.reused() - before;
+    if (analysed)
+        book.analysis = analysed.take();
+    else
+        book.analysis_error = analysed.error();
     return book;
 }
 

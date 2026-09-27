@@ -29,6 +29,7 @@ C_API_VERSION = 1
 
 _PROGRESS = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_char_p, ctypes.c_size_t,
                              ctypes.c_size_t)
+_METADATA = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_char_p)
 _OUT = ctypes.POINTER(ctypes.c_void_p)
 
 
@@ -38,6 +39,7 @@ class PdfBookmarkError(Exception):
 
     def __init__(self, status, name, message):
         super().__init__(f"{name}: {message}")
+        self.metadata = None  # Set by analyze_book when only the analysis failed.
         self.status = status
         self.name = name
         self.message = message
@@ -114,16 +116,31 @@ class Library:
                                          callback, None, report.ref(), plan.ref()))
         return json.loads(report.text()), plan.text()
 
-    def analyze_book(self, pdf, progress=None, cancel=None, **options):
-        """analyze() and extract_metadata() in one run: pages read for the
-        contents are reused for the metadata (a scan is OCR'd once).
-        Returns (report, plan, metadata); plan is None when not ready."""
+    def analyze_book(self, pdf, progress=None, cancel=None, on_metadata=None, **options):
+        """extract_metadata() then analyze() in one run: pages read for the
+        metadata are reused for the contents (a scan is OCR'd once).
+        on_metadata(dict) receives the metadata as soon as it is ready.
+        Returns (report, plan, metadata); plan is None when not ready.
+        If the TOC analysis fails, the PdfBookmarkError carries the metadata
+        in its `.metadata` attribute."""
         report, plan, meta = _OutString(self._c), _OutString(self._c), _OutString(self._c)
         callback = _callback(progress)  # Kept alive during the call.
-        self._check(self._c.pdfb_analyze_book(_path(pdf), _options(options), _token(cancel),
-                                              callback, None, report.ref(), plan.ref(),
-                                              meta.ref()))
-        return json.loads(report.text()), plan.text(), json.loads(meta.text())
+        if on_metadata is None:
+            metadata_callback = _METADATA()
+        else:
+            metadata_callback = _METADATA(
+                lambda _user, text: on_metadata(json.loads(text.decode("utf-8"))))
+        status = self._c.pdfb_analyze_book(_path(pdf), _options(options), _token(cancel),
+                                           callback, metadata_callback, None, report.ref(),
+                                           plan.ref(), meta.ref())
+        metadata_text = meta.text()
+        metadata = None if metadata_text is None else json.loads(metadata_text)
+        try:
+            self._check(status)
+        except PdfBookmarkError as error:
+            error.metadata = metadata
+            raise
+        return json.loads(report.text()), plan.text(), metadata
 
     def apply(self, pdf, output, plan, replace_existing_output=False, cancel=None):
         """Writes a NEW PDF with the plan's bookmarks. `plan` is JSON text or
@@ -174,7 +191,7 @@ class Library:
             "pdfb_find_models": (i, [_OUT]),
             "pdfb_extract_text": (i, [s, s, v, p, v, _OUT]),
             "pdfb_analyze": (i, [s, s, v, p, v, _OUT, _OUT]),
-            "pdfb_analyze_book": (i, [s, s, v, p, v, _OUT, _OUT, _OUT]),
+            "pdfb_analyze_book": (i, [s, s, v, p, _METADATA, v, _OUT, _OUT, _OUT]),
             "pdfb_apply": (i, [s, s, s, s, v, _OUT]),
             "pdfb_extract_metadata": (i, [s, s, v, _OUT]),
             "pdfb_validate_plan": (i, [s, _OUT]),
