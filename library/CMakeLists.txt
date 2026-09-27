@@ -40,6 +40,7 @@ set(_sources
   ${_root}/src/engine/analysis_json.cpp
   ${_root}/src/engine/apply.cpp
   ${_root}/src/engine/metadata.cpp
+  ${_root}/src/engine/book.cpp
   ${_root}/src/engine/library.cpp
   ${_root}/src/engine/c_api.cpp)
 if(PDFBOOKMARK_TEXT_WITH_OCR)
@@ -111,9 +112,13 @@ if(OCR_BUILD_TESTS)
     target_compile_options(pdfbookmark_c_api_tests PRIVATE /W4 /WX /utf-8)
   endif()
   file(MAKE_DIRECTORY "${PROJECT_BINARY_DIR}/library_c_api_work")
+  set(_c_api_models "")
+  if(PDFBOOKMARK_TEXT_WITH_OCR)
+    set(_c_api_models "${_root}/models")  # Real-OCR budget check (PR #4 review).
+  endif()
   add_test(NAME library_c_api COMMAND pdfbookmark_c_api_tests
     "${_root}/tests/engine/fixtures" "${_root}/tests/metadata/fixtures/front_matter.pdf"
-    "${PROJECT_BINARY_DIR}/library_c_api_work")
+    "${PROJECT_BINARY_DIR}/library_c_api_work" ${_c_api_models})
 
   # Python client through the C API (ctypes); skipped without Python 3.
   find_package(Python3 COMPONENTS Interpreter)

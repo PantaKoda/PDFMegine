@@ -295,3 +295,70 @@ S6 decisions are recorded with its contract in `docs/handoffs/S6_HANDOFF.md`.
   - The CMake package keeps `SameMajorVersion` compatibility, so clients asking for `find_package(pdfbookmark 0.1)` also accept 0.2.0.
   - Clients rebuild fully when switching SDKs; the SDK brief says so.
   - The standalone subsystem packages (`subsystems/*`) and the OCR package keep their own 0.1.0 versions. They are not released separately.
+
+### E-33 Reuse acquired pages across metadata and TOC analysis (issue #3, 27 Sep 2026)
+
+- **Change:** new operation `analyze_book(pdf, AnalysisOptions, MetadataRunOptions, control, progress)` returns a `BookReport` (both reports plus `pages_reused`). It is also available as C API `pdfb_analyze_book`, Python `Library.analyze_book` and CLI `analyze`/`add --metadata PATH`.
+  - It opens one S1 session and runs analysis, then metadata.
+  - A per-session `PageCache` in the Engine ledger serves pages the analysis already acquired.
+  - `analyze()` and `extract_metadata()` are unchanged. Internally they became "open, then run on the session" (`src/engine/runs.hpp`).
+- **Why:**
+  - MyBooksLibrary imports every book with both calls, so each scanned page was OCR'd twice. The re-verification on #1 measured this at 57.7 s for 4 pages.
+  - Following the #1 review, a shared session alone is not enough, because `acquire()` would process the pages again. Engine therefore reuses `PageAcquisition` results, while S1 still performs every acquisition.
+  - Analysis runs first because it reads the most pages (TOC search, up to 40). The metadata stage (at most 30 pages) is then normally served entirely from the cache.
+- **Reuse rules:**
+  - Same session only, which means the same input bytes, OCR models and OCR threads.
+  - Same `mode` and raster limits, otherwise the page is read again.
+  - Never pages that were cancelled, or whose OCR was skipped (e.g. for budget), so the metadata stage can still OCR them.
+  - Reused pages keep their revision, configuration and model identity (no repointing, `AGENTS.md` §3.3). They cost no OCR budget.
+- **Assumptions:**
+  - `models` and `ocr_threads` are session settings and come from the analysis options; the metadata options' values are not used (documented in `book.hpp` and `API.md`).
+  - No new C API version: adding a function is compatible (`PDFB_C_API_VERSION` stays 1).
+  - Existing C++ structs are unchanged, so this is an additive minor release (0.3.0).
+- **Verified:**
+  - `engine_book` test with a counting fake OCR:
+    - 4 scanned pages are OCR'd exactly once (8 times with separate calls);
+    - both reports equal the separate calls' (metadata apart from `ocr_attempts_used`);
+    - same input identity;
+    - no reuse at a different DPI;
+    - cancellation reaches both stages without reusing cancelled pages;
+    - budget-skipped pages are OCR'd by the metadata stage;
+    - text-layer pages are reused with no OCR.
+  - The C API, Python and CLI (`cli_metadata`) checks pass. The `dev` suite is 22/22.
+  - Real OCR (Release, Ryzen 9 5900X, `tools/bench`):
+    - 4-page scan: 61.3 s → 31.2 s;
+    - 20-page scan: 305.1 s → 147.0 s;
+    - peak 2.32 GB unchanged;
+    - analysis reports identical, and metadata reports identical except `ocr_attempts_used`.
+- **Amended after the PR #4 review (27 Sep 2026)**, which found three P2 problems. All are fixed, each with regressions at the Engine, C API and CLI levels:
+  1. **The OCR budget reset between stages.** Each stage had its own ledger with a full allowance, so a single `ocr_budget` of 1 allowed 2 attempts.
+     - Now `analysis.limits.ocr_budget` caps the whole run. The metadata stage gets `min(metadata.ocr_budget, what the analysis left)`, reported as its `ocr_budget`. Cache hits stay free.
+     - **Assumption:** a sequential two-stage run needs no shared counter object; handing the remainder to the second stage is exact.
+     - **Tests:** `engine_book` (fake OCR: exactly 1 call at cap 1; 2 left for metadata at cap 6), `library_c_api` and `cli_book` (real OCR, 4 scanned pages, `ocr_budget` 1: 1 attempt in total).
+  2. **CLI cancellation during the metadata stage exited 0.**
+     - The exit status now comes from `cli::analysis_exit_code(analysis_cancelled, metadata_cancelled, plan_ready)`. Completed outputs are still written; the run exits 4 and `add` writes no PDF.
+     - **Tests:** `engine_book` (cancellation during metadata: analysis complete, metadata cancelled) and `cli_outputs` (exit-status rule).
+  3. **Output destinations could collide.** For example `--report x --metadata x` overwrote one with the other.
+     - All requested outputs (`--report`, `--plan`, `--metadata`, `add --output`) are now compared pairwise **before any work**, by `cli::output_collision`.
+     - The comparison uses normalised absolute paths (`weakly_canonical`, case-insensitive on Windows) and `equivalent()` for existing files, which covers hard links. A collision exits 2 (usage) and nothing is written.
+     - **Tests:** `cli_outputs` (the spellings `.` and `..`, case, a hard link, pairs) and `cli_book`, which checks exit 2 and that no file is created or changed, even with `--force`.
+- **Amended after the second PR #4 review (consumer side, 27 Sep 2026): metadata first.**
+  - **Change:**
+    - `analyze_book` now runs the metadata stage **before** the TOC analysis, and hands the metadata to an optional `on_metadata` callback (C: `pdfb_metadata_fn`; Python: `on_metadata`; CLI: `--metadata` is written at that moment).
+    - An analysis error no longer fails the call: `BookReport::analysis` is optional, and `analysis_error` says why. In the C API, `*out_metadata_json` survives an analysis-only failure, and the function then returns the analysis error status.
+    - The OCR budget stays one run-wide cap (`analysis.limits.ocr_budget`). The metadata stage may use at most its own budget of it; the analysis gets the rest.
+    - Progress counts are per stage (documented).
+  - **Why:** analysis-first delivered the title only after the whole TOC analysis, about 5-8 minutes on a scanned book, and lost the metadata when the analysis failed. MyBooksLibrary requires metadata first, published independently (its AGENTS.md §8), and kept when the TOC analysis fails (§6). With analysis-first, the SDK brief was steering its agent into violating both.
+  - **Why the reversed order costs no OCR:** with the default limits, the metadata pages (at most 30) lie inside the analysis's first 40-page batch, so the pages OCR'd are the same union in either order. Measured: still one OCR per page (`engine_book` case 1).
+  - **Assumptions:**
+    - Under a tight run-wide budget, the metadata stage now spends first. That is the right priority for clients that publish metadata first; the analysis gets the remainder.
+    - Errors in opening the input or in the metadata stage still fail the call, because they indicate problems at the session level.
+  - **Tests:** `engine_book` checks:
+    - metadata delivered before any analysis stage ran, and equal to the returned report;
+    - the analysis reuses the metadata's 4 pages (4 OCR calls in total);
+    - a cancellation during the analysis keeps the metadata complete;
+    - an S4 error after acquisition (an invalid numbering section) returns `analysis_error` with the metadata delivered and returned;
+    - results equal separate calls.
+
+    `library_c_api` checks the callback and the real-OCR run-wide cap (the metadata stage now does the 1 OCR), and `library_python` checks the callback.
+

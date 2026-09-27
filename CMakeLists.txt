@@ -380,17 +380,17 @@ if(PDFBOOKMARK_BUILD_ENGINE)
   target_link_libraries(pdfbookmarkEngine PUBLIC pdfbookmarkText
     pdfbookmarkTocDetection pdfbookmarkTocParsing pdfbookmarkMapping
     pdfbookmarkWriterPlan pdfbookmarkWriter)
-  # S6 is optional: Engine gains extract_metadata() and the CLI its
+  # S6 is optional: Engine gains extract_metadata(), analyze_book() and the CLI its
   # 'metadata' command only when the subsystem is built.
   if(PDFBOOKMARK_BUILD_METADATA)
-    target_sources(pdfbookmarkEngine PRIVATE src/engine/metadata.cpp)
+    target_sources(pdfbookmarkEngine PRIVATE src/engine/metadata.cpp src/engine/book.cpp)
     target_link_libraries(pdfbookmarkEngine PUBLIC pdfbookmarkMetadata)
   endif()
   set_target_properties(pdfbookmarkEngine PROPERTIES
     WINDOWS_EXPORT_ALL_SYMBOLS ON POSITION_INDEPENDENT_CODE ON)
   ocr_enable_strict_warnings(pdfbookmarkEngine)
 
-  add_library(pdfbookmark_cli_selection OBJECT apps/cli/page_selection.cpp)
+  add_library(pdfbookmark_cli_selection OBJECT apps/cli/page_selection.cpp apps/cli/outputs.cpp)
   target_include_directories(pdfbookmark_cli_selection PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/apps/cli"
     "${CMAKE_CURRENT_SOURCE_DIR}/include")
@@ -562,6 +562,28 @@ if(PDFBOOKMARK_BUILD_ENGINE)
       pdfbookmark_engine_runtime_for(pdfbookmark_engine_metadata_tests)
       add_test(NAME engine_metadata COMMAND pdfbookmark_engine_metadata_tests
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/metadata/fixtures/front_matter.pdf")
+      # analyze_book page reuse (issue #3); needs the fake-OCR test hook.
+      if(PDFBOOKMARK_TEST_HOOKS)
+        add_executable(pdfbookmark_engine_book_tests tests/engine/engine_book_test.cpp)
+        target_include_directories(pdfbookmark_engine_book_tests PRIVATE
+          "${CMAKE_CURRENT_SOURCE_DIR}/src/text")
+        target_compile_definitions(pdfbookmark_engine_book_tests PRIVATE PDFBOOKMARK_TEST_HOOKS)
+        target_link_libraries(pdfbookmark_engine_book_tests PRIVATE pdfbookmarkEngine)
+        ocr_enable_strict_warnings(pdfbookmark_engine_book_tests)
+        pdfbookmark_engine_runtime_for(pdfbookmark_engine_book_tests)
+        add_test(NAME engine_book COMMAND pdfbookmark_engine_book_tests
+          "${CMAKE_CURRENT_SOURCE_DIR}/tests/engine/fixtures")
+      endif()
+      set(_book_models "")
+      if(PDFBOOKMARK_TEXT_WITH_OCR)
+        set(_book_models "${CMAKE_CURRENT_SOURCE_DIR}/models")
+      endif()
+      add_test(NAME cli_book COMMAND "${CMAKE_COMMAND}"
+        "-DCLI=$<TARGET_FILE:pdfbookmarkCli>"
+        "-DFIXTURES=${CMAKE_CURRENT_SOURCE_DIR}/tests/engine/fixtures"
+        "-DMODELS=${_book_models}"
+        "-DWORK=${CMAKE_CURRENT_BINARY_DIR}/cli_book_work"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cli/cli_book_test.cmake")
       add_test(NAME cli_metadata COMMAND "${CMAKE_COMMAND}"
         "-DCLI=$<TARGET_FILE:pdfbookmarkCli>"
         "-DPDF=${CMAKE_CURRENT_SOURCE_DIR}/tests/metadata/fixtures/front_matter.pdf"
@@ -577,6 +599,16 @@ if(PDFBOOKMARK_BUILD_ENGINE)
     target_compile_features(pdfbookmark_cli_selection_tests PRIVATE cxx_std_17)
     ocr_enable_strict_warnings(pdfbookmark_cli_selection_tests)
     add_test(NAME cli_page_selection COMMAND pdfbookmark_cli_selection_tests)
+
+    # Output-collision and exit-status rules of analyze/add (PR #4 review).
+    add_executable(pdfbookmark_cli_outputs_tests tests/cli/outputs_test.cpp
+      $<TARGET_OBJECTS:pdfbookmark_cli_selection>)
+    target_include_directories(pdfbookmark_cli_outputs_tests PRIVATE
+      "${CMAKE_CURRENT_SOURCE_DIR}/apps/cli" "${CMAKE_CURRENT_SOURCE_DIR}/include")
+    target_compile_features(pdfbookmark_cli_outputs_tests PRIVATE cxx_std_17)
+    ocr_enable_strict_warnings(pdfbookmark_cli_outputs_tests)
+    add_test(NAME cli_outputs COMMAND pdfbookmark_cli_outputs_tests
+      "${CMAKE_CURRENT_BINARY_DIR}/cli_outputs_work")
     add_test(NAME cli_text COMMAND "${CMAKE_COMMAND}"
       "-DCLI=$<TARGET_FILE:pdfbookmarkCli>"
       "-DPDF=${pdfbookmark_engine_fixture}"

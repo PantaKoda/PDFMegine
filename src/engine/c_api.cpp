@@ -212,6 +212,50 @@ Reading reading_of(const Options& options) {
     return r;
 }
 
+// Analysis option keys, shared by pdfb_analyze and pdfb_analyze_book.
+const std::set<std::string> kAnalysisKeys = {"allow_partial", "flat_outline", "titles",
+                                             "candidate", "max_search_pages",
+                                             "max_evidence_pages"};
+
+AnalysisOptions analysis_of(const Options& options, const Reading& reading) {
+    AnalysisOptions analysis;
+    analysis.mode = reading.mode;
+    analysis.raster = reading.raster;
+    analysis.ocr_threads = reading.ocr_threads;
+    analysis.models = reading.models;
+    if (reading.ocr_budget) analysis.limits.ocr_budget = *reading.ocr_budget;
+    if (const auto v = options.boolean("allow_partial")) analysis.plan.allow_partial = *v;
+    if (const auto v = options.boolean("flat_outline"))
+        analysis.plan.flat_outline_for_unknown_hierarchy = *v;
+    if (const auto titles = options.string("titles")) {
+        if (*titles == "printed") analysis.plan.title_style = PlanPolicy::TitleStyle::AsPrinted;
+        else if (*titles == "chapter") analysis.plan.title_style = PlanPolicy::TitleStyle::Chapter;
+        else fail(PDFB_INVALID_ARGUMENT, "titles must be \"printed\" or \"chapter\"");
+    }
+    analysis.candidate_id = options.string("candidate");
+    if (const auto n = options.count("max_search_pages")) analysis.limits.max_search_pages = *n;
+    if (const auto n = options.count("max_evidence_pages")) analysis.limits.max_evidence_pages = *n;
+    return analysis;
+}
+
+MetadataRunOptions metadata_of(const Options& options, const Reading& reading) {
+    MetadataRunOptions run;
+    run.mode = reading.mode;
+    run.raster = reading.raster;
+    run.ocr_threads = reading.ocr_threads;
+    run.models = reading.models;
+    if (reading.ocr_budget) run.ocr_budget = *reading.ocr_budget;
+    if (const auto n = options.count("max_pages")) run.max_pages = *n;
+    return run;
+}
+
+AnalysisProgressCallback progress_of(pdfb_progress_fn progress, void* user_data) {
+    if (!progress) return {};
+    return [progress, user_data](const AnalysisProgress& p) {
+        progress(user_data, p.stage.c_str(), p.pages_acquired, 0);
+    };
+}
+
 // ------------------------------------------------------------ result JSON
 
 std::string identity_json(const InputIdentity& identity) {
@@ -381,36 +425,11 @@ pdfb_status pdfb_analyze(const char* pdf_path, const char* options_json,
     return guarded({out_report_json, out_plan_json}, [&] {
         require_out(out_report_json, "out_report_json");
         const auto input = path_arg(pdf_path, "pdf_path");
-        const Options options(options_json,
-                              with_reading({"allow_partial", "flat_outline", "titles",
-                                            "candidate", "max_search_pages",
-                                            "max_evidence_pages"}));
+        const Options options(options_json, with_reading(kAnalysisKeys));
         const Reading reading = reading_of(options);
-        AnalysisOptions analysis;
-        analysis.mode = reading.mode;
-        analysis.raster = reading.raster;
-        analysis.ocr_threads = reading.ocr_threads;
-        analysis.models = reading.models;
-        if (reading.ocr_budget) analysis.limits.ocr_budget = *reading.ocr_budget;
-        if (const auto v = options.boolean("allow_partial")) analysis.plan.allow_partial = *v;
-        if (const auto v = options.boolean("flat_outline"))
-            analysis.plan.flat_outline_for_unknown_hierarchy = *v;
-        if (const auto titles = options.string("titles")) {
-            if (*titles == "printed") analysis.plan.title_style = PlanPolicy::TitleStyle::AsPrinted;
-            else if (*titles == "chapter") analysis.plan.title_style = PlanPolicy::TitleStyle::Chapter;
-            else fail(PDFB_INVALID_ARGUMENT, "titles must be \"printed\" or \"chapter\"");
-        }
-        analysis.candidate_id = options.string("candidate");
-        if (const auto n = options.count("max_search_pages")) analysis.limits.max_search_pages = *n;
-        if (const auto n = options.count("max_evidence_pages"))
-            analysis.limits.max_evidence_pages = *n;
-
-        AnalysisProgressCallback on_progress;
-        if (progress)
-            on_progress = [&](const AnalysisProgress& p) {
-                progress(user_data, p.stage.c_str(), p.pages_acquired, 0);
-            };
-        const auto report = take(analyze(input, analysis, control_of(cancel), on_progress));
+        const AnalysisOptions analysis = analysis_of(options, reading);
+        const auto report =
+            take(analyze(input, analysis, control_of(cancel), progress_of(progress, user_data)));
         *out_report_json = copy_out(analysis_report_json(report, analysis));
         if (out_plan_json && report.plan.ready && report.plan.plan)
             *out_plan_json = copy_out(plan_to_json(*report.plan.plan));
@@ -441,16 +460,49 @@ pdfb_status pdfb_extract_metadata(const char* pdf_path, const char* options_json
         const auto input = path_arg(pdf_path, "pdf_path");
         const Options options(options_json, with_reading({"max_pages"}));
         const Reading reading = reading_of(options);
-        MetadataRunOptions run;
-        run.mode = reading.mode;
-        run.raster = reading.raster;
-        run.ocr_threads = reading.ocr_threads;
-        run.models = reading.models;
-        if (reading.ocr_budget) run.ocr_budget = *reading.ocr_budget;
-        if (const auto n = options.count("max_pages")) run.max_pages = *n;
-        const auto report = take(extract_metadata(input, run, control_of(cancel)));
+        const auto report =
+            take(extract_metadata(input, metadata_of(options, reading), control_of(cancel)));
         *out_report_json = copy_out(metadata_report_json(report));
     });
+}
+
+pdfb_status pdfb_analyze_book(const char* pdf_path, const char* options_json,
+                              pdfb_cancel_token* cancel, pdfb_progress_fn progress,
+                              pdfb_metadata_fn on_metadata, void* user_data,
+                              char** out_report_json, char** out_plan_json,
+                              char** out_metadata_json) {
+    // The metadata output is managed outside guarded(): it must survive an
+    // analysis-only failure (PR #4 consumer review).
+    if (out_metadata_json) *out_metadata_json = nullptr;
+    char* metadata_out = nullptr;
+    const pdfb_status status = guarded({out_report_json, out_plan_json}, [&] {
+        require_out(out_report_json, "out_report_json");
+        require_out(out_metadata_json, "out_metadata_json");
+        const auto input = path_arg(pdf_path, "pdf_path");
+        auto keys = kAnalysisKeys;
+        keys.insert("max_pages");
+        const Options options(options_json, with_reading(keys));
+        const Reading reading = reading_of(options);
+        const AnalysisOptions analysis = analysis_of(options, reading);
+        const auto book = take(analyze_book(
+            input, analysis, metadata_of(options, reading), control_of(cancel),
+            progress_of(progress, user_data), [&](const MetadataReport& metadata) {
+                const std::string json = metadata_report_json(metadata);
+                metadata_out = copy_out(json);
+                if (on_metadata) on_metadata(user_data, json.c_str());
+            }));
+        if (book.analysis_error)
+            fail(status_of(book.analysis_error->code),
+                 "TOC analysis failed (metadata is available): " + book.analysis_error->message);
+        *out_report_json = copy_out(analysis_report_json(*book.analysis, analysis));
+        if (out_plan_json && book.analysis->plan.ready && book.analysis->plan.plan)
+            *out_plan_json = copy_out(plan_to_json(*book.analysis->plan.plan));
+    });
+    if (out_metadata_json)
+        *out_metadata_json = metadata_out;
+    else
+        std::free(metadata_out);
+    return status;
 }
 
 pdfb_status pdfb_validate_plan(const char* plan_json, char** out_result_json) {

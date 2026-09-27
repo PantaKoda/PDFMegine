@@ -140,7 +140,7 @@ This is produced by `pdfb_analyze` (its second output, only when ready), `plan_t
 
 ## 6. Metadata report (`kind: "pdfbookmark.metadata"`)
 
-This is produced by `pdfb_extract_metadata`, `extract_metadata()` + `metadata_report_json()`, and `pdfbookmark metadata --json`.
+This is produced by `pdfb_extract_metadata`, `extract_metadata()` + `metadata_report_json()`, and `pdfbookmark metadata --json`. It is also produced by `pdfb_analyze_book` / `analyze_book()` and `pdfbookmark analyze --metadata`. The metadata stage runs first there, so its report is unchanged. The analysis report's `acquisition.ocr_attempts_used` counts only the pages the analysis itself had to OCR; pages reused from the metadata stage count 0.
 
 | Member | Meaning |
 | --- | --- |

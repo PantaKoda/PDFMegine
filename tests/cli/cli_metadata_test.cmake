@@ -10,6 +10,7 @@ function(expect_exit code)
     message(FATAL_ERROR "Expected exit ${code}, got ${rc}: ${ARGN}\n${out}\n${err}")
   endif()
   set(LAST_OUT "${out}" PARENT_SCOPE)
+  set(LAST_ERR "${err}" PARENT_SCOPE)
 endfunction()
 
 file(SHA256 "${PDF}" before)
@@ -34,6 +35,18 @@ endif()
 expect_exit(1 "${CLI}" metadata "${PDF}" --mode embedded --json "${WORK}/meta.json")
 expect_exit(3 "${CLI}" metadata "${PDF}" --mode embedded --max-pages 2)
 expect_exit(0 "${CLI}" metadata --help)
+# analyze --metadata: TOC analysis and metadata in one run (issue #3). This
+# fixture has no TOC (exit 3), but the metadata file is still written (first,
+# before the TOC analysis), with the same title as the metadata command.
+expect_exit(3 "${CLI}" analyze "${PDF}" --mode embedded --report "${WORK}/book-report.json"
+            --metadata "${WORK}/book-meta.json")
+file(READ "${WORK}/book-meta.json" book_json)
+string(JSON book_title GET "${book_json}" fields title value title)
+if(NOT book_title STREQUAL "Parallel Worlds" OR NOT LAST_ERR MATCHES "metadata written to")
+  message(FATAL_ERROR "analyze --metadata: ${book_title}
+${LAST_ERR}")
+endif()
+expect_exit(2 "${CLI}" analyze "${PDF}" --metadata -)
 expect_exit(2 "${CLI}" metadata "${PDF}" --max-pages 0)
 file(SHA256 "${PDF}" after)
 if(NOT before STREQUAL after)

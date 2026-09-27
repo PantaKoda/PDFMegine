@@ -56,6 +56,12 @@ def main():
     report, plan = lib.analyze(book, cancel=token)
     assert report["outcome"] == "cancelled" and plan is None
 
+    # Analysis + metadata in one run (issue #3).
+    early = []
+    report, plan, meta = lib.analyze_book(book, mode="embedded", on_metadata=early.append)
+    assert report["outcome"] == "plan_ready" and plan and meta["kind"] == "pdfbookmark.metadata"
+    assert early == [meta], "metadata delivered early through the callback"
+
     text = lib.extract_text(fixtures / "boundary.pdf", pages=[39], mode="embedded")
     assert text["pages"][0]["page_index"] == 39
     print(f"pdfbookmark {lib.version} Python wrapper passed")

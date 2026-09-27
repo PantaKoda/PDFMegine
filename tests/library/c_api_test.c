@@ -1,5 +1,5 @@
 /* C API test: plain C, uses ONLY <pdfbookmark/pdfbookmark.h>.
- * Usage: pdfbookmark_c_api_tests <engine fixtures dir> <front_matter.pdf> <work dir>
+ * Usage: pdfbookmark_c_api_tests <engine fixtures dir> <front_matter.pdf> <work dir> [models dir]
  * (paths in UTF-8; the work dir must exist). */
 #include <pdfbookmark/pdfbookmark.h>
 
@@ -22,7 +22,20 @@ static void join(char* out, size_t size, const char* dir, const char* name) {
     snprintf(out, size, "%s/%s", dir, name);
 }
 
+/* Value of the first `"ocr_attempts_used": N` in a JSON report, or -1. */
+static long attempts(const char* json) {
+    const char* at = json ? strstr(json, "\"ocr_attempts_used\": ") : NULL;
+    return at ? strtol(at + strlen("\"ocr_attempts_used\": "), NULL, 10) : -1;
+}
+
 static size_t g_progress_calls = 0;
+static int g_metadata_calls = 0;
+static void on_metadata(void* user_data, const char* metadata_json) {
+    (void)user_data;
+    require(strstr(metadata_json, "\"kind\": \"pdfbookmark.metadata\"") != NULL,
+            "early metadata is a metadata report");
+    ++g_metadata_calls;
+}
 static void on_progress(void* user_data, const char* stage, size_t done, size_t total) {
     (void)stage; (void)done; (void)total;
     require(user_data == &g_progress_calls, "progress receives user_data");
@@ -35,7 +48,7 @@ int main(int argc, char** argv) {
     pdfb_status status;
     pdfb_cancel_token* token;
 
-    require(argc == 4, "usage: fixtures-dir front_matter.pdf work-dir");
+    require(argc == 4 || argc == 5, "usage: fixtures-dir front_matter.pdf work-dir [models-dir]");
     join(input, sizeof input, argv[1], "boundary_outlined.pdf");
     join(boundary, sizeof boundary, argv[1], "boundary.pdf");
     join(output, sizeof output, argv[3], "c_api_out.pdf");
@@ -110,6 +123,36 @@ int main(int argc, char** argv) {
             "missing input is an error");
     require(pdfb_analyze(input, NULL, NULL, NULL, NULL, NULL, NULL) == PDFB_INVALID_ARGUMENT,
             "NULL output pointer rejected");
+
+    /* Analysis and metadata in one run (issue #3). */
+    {
+        char* meta = NULL;
+        status = pdfb_analyze_book(input, "{\"mode\":\"embedded\",\"max_pages\":10}", NULL,
+                                   NULL, on_metadata, NULL, &report, &plan, &meta);
+        require(status == PDFB_OK && contains(report, "\"outcome\": \"plan_ready\"") && plan &&
+                    contains(meta, "\"kind\": \"pdfbookmark.metadata\""),
+                "analyze_book returns report, plan and metadata");
+        require(g_metadata_calls == 1, "the metadata callback fired once");
+        pdfb_free(report); pdfb_free(plan); pdfb_free(meta);
+        require(pdfb_analyze_book(input, NULL, NULL, NULL, NULL, NULL, &report, NULL, NULL) ==
+                    PDFB_INVALID_ARGUMENT && report == NULL,
+                "analyze_book needs a metadata output");
+    }
+    /* One run-wide OCR budget across both stages (PR #4 review): with real OCR
+     * models on 4 scanned pages, "ocr_budget": 1 allows 1 attempt in total. */
+    if (argc == 5) {
+        char scan[4096], options[4608], *meta = NULL;
+        join(scan, sizeof scan, argv[1], "scan4.pdf");
+        snprintf(options, sizeof options, "{\"mode\":\"auto\",\"ocr_budget\":1,\"models\":\"%s\"}",
+                 argv[4]);
+        for (char* c = options; *c; ++c)
+            if (*c == '\\') *c = '/';  /* JSON-safe Windows path. */
+        status = pdfb_analyze_book(scan, options, NULL, NULL, NULL, NULL, &report, NULL, &meta);
+        require(status == PDFB_OK, "analyze_book on a scan with real OCR");
+        require(attempts(report) + attempts(meta) == 1 && attempts(meta) == 1,
+                "run-wide ocr_budget 1: exactly one OCR attempt across both stages");
+        pdfb_free(report); pdfb_free(meta);
+    }
 
     /* Cancellation. */
     token = pdfb_cancel_token_new();

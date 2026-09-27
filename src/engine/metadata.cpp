@@ -3,6 +3,7 @@
 #include "codec.hpp"
 #include "json.hpp"
 #include "ledger.hpp"
+#include "runs.hpp"
 
 #include <algorithm>
 #include <map>
@@ -20,18 +21,31 @@ bool settled(const metadata::MetadataResult& r) {
 
 }  // namespace
 
+std::optional<Error> detail::check_metadata_options(const MetadataRunOptions& options) {
+    if (options.initial_pages == 0 || options.batch_pages == 0 || options.max_pages == 0)
+        return Error{ErrorCode::InvalidArgument, "Invalid metadata page limits"};
+    return std::nullopt;
+}
+
 Result<MetadataReport> extract_metadata(const std::filesystem::path& input,
                                         const MetadataRunOptions& options,
                                         const RunControl& control) {
-    if (options.initial_pages == 0 || options.batch_pages == 0 || options.max_pages == 0)
-        return Error{ErrorCode::InvalidArgument, "Invalid metadata page limits"};
+    if (auto error = detail::check_metadata_options(options)) return *error;
     text::OpenOptions open;
     open.ocr_threads = options.ocr_threads;
     open.ocr_models = options.models;
     auto opened = text::TextAcquisition{}.open(input, open);
     if (!opened) return opened.error();
     auto document = opened.take();
-    detail::Ledger ledger(options.mode, options.raster, options.ocr_budget);
+    return detail::run_metadata(document, options, control, nullptr);
+}
+
+Result<MetadataReport> detail::run_metadata(text::TextDocument& document,
+                                            const MetadataRunOptions& options,
+                                            const RunControl& control,
+                                            PageCache* cache,
+                                            const AnalysisProgressCallback& progress) {
+    detail::Ledger ledger(options.mode, options.raster, options.ocr_budget, cache);
     MetadataReport report;
     report.input = document.identity();
     const auto count = static_cast<std::size_t>(document.page_count());
@@ -50,6 +64,7 @@ Result<MetadataReport> extract_metadata(const std::filesystem::path& input,
             for (auto& a : acquired.value()) pages[a.page.page_index] = std::move(a.page);
             if (!complete) report.cancelled = true;
             end = next;
+            if (progress) progress({"metadata", pages.size()});
         }
         std::vector<text::PageAcquisition> supplied;
         for (const auto& p : pages) supplied.push_back(p.second);

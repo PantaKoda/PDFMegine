@@ -154,6 +154,33 @@ PDFB_API pdfb_status pdfb_extract_metadata(const char* pdf_path, const char* opt
                                            pdfb_cancel_token* cancel,
                                            char** out_report_json);
 
+/* Receives the metadata report JSON as soon as metadata extraction is
+ * done, before the (much longer) TOC analysis starts. `metadata_json` is
+ * valid only during the call. */
+typedef void (*pdfb_metadata_fn)(void* user_data, const char* metadata_json);
+
+/* pdfb_extract_metadata and pdfb_analyze in one run: the PDF is opened once
+ * and the pages read (and OCR'd) for the metadata are reused by the TOC
+ * analysis, so a scanned book's front pages are OCR'd once instead of twice.
+ * Metadata runs FIRST, so a client can show the title early:
+ *   - `on_metadata` (may be NULL) receives the metadata report immediately;
+ *   - the metadata survives a failed analysis: *out_metadata_json is set
+ *     whenever metadata extraction completed. If the analysis then fails,
+ *     the function returns the analysis error status, *out_report_json and
+ *     *out_plan_json are NULL, and *out_metadata_json must still be freed.
+ * Options: the pdfb_analyze options plus "max_pages" (metadata).
+ * "ocr_budget" caps OCR for the WHOLE run (both stages together).
+ * Outputs: *out_report_json and *out_plan_json as pdfb_analyze (plan may be
+ * NULL if not wanted), *out_metadata_json as pdfb_extract_metadata.
+ * Progress reports stage "metadata" first; `done` counts pages of the
+ * current stage. Results equal the two separate calls; the analysis report's
+ * OCR attempt count is lower because reused pages are not OCR'd again. */
+PDFB_API pdfb_status pdfb_analyze_book(const char* pdf_path, const char* options_json,
+                                       pdfb_cancel_token* cancel, pdfb_progress_fn progress,
+                                       pdfb_metadata_fn on_metadata, void* user_data,
+                                       char** out_report_json, char** out_plan_json,
+                                       char** out_metadata_json);
+
 /* ------------------------------------------------------------ plans */
 
 /* Structural check of a plan (ids, parents, cycles, titles, page bounds).
