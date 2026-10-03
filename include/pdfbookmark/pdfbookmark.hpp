@@ -17,7 +17,7 @@
 /// | extract_text()      | Positioned text of pages (native PDF text or OCR)      |
 /// | analyze()           | Find the TOC, map entries to pages, build a plan       |
 /// | apply()             | Write a NEW PDF with a plan's bookmarks                |
-/// | extract_metadata()  | Title, contributors, edition, publication/copyright year |
+/// | extract_metadata()  | Title, contributors, edition, years, ISBNs             |
 /// | validate_plan(), plan_to_json(), plan_from_json(), read_pdf_identity()      |
 /// | find_models(), models_in(), version()                                        |
 ///

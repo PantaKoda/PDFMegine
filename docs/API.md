@@ -151,6 +151,8 @@ auto meta = pdfbookmark::extract_metadata(pdf, MetadataRunOptions{});  // first 
 
 A copyright year is never reported as the publication year.
 
+`result.isbns` lists every ISBN printed in the pages searched (empty when none was found). Each entry has the normalised `isbn13`, the `printed` form, the `format` (`Hardcover`, `Paperback`, `Electronic`, `Print` or `Unknown`), the printed `label` and its `evidence`. An ISBN identifies one edition in one format, so a book usually has several; none is singled out.
+
 ### Contents and metadata together
 ```cpp
 auto book = pdfbookmark::analyze_book(pdf, analysis_options, metadata_options, control, on_progress,

@@ -177,6 +177,16 @@ std::string metadata_report_json(const MetadataReport& report) {
     fields.add("edition", field_json(r.edition));
     fields.add("publication_year", field_json(r.publication_year));
     fields.add("copyright_year", field_json(r.copyright_year));
+    auto& isbns = root.add("isbns", Value::make_array());
+    for (const auto& i : r.isbns) {
+        auto& o = isbns.push(Value::make_object());
+        o.add("isbn13", Value::of(i.isbn13));
+        o.add("printed", Value::of(i.printed));
+        o.add("form", Value::of(metadata::form_name(i.form)));
+        o.add("format", Value::of(metadata::format_name(i.format)));
+        o.add("label", i.label ? Value::of(*i.label) : Value::null());
+        o.add("evidence", evidence_json(i.evidence));
+    }
     auto& pages = root.add("pages", Value::make_array());
     for (const auto& p : r.pages) {
         auto& o = pages.push(Value::make_object());

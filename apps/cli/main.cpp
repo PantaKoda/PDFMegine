@@ -59,7 +59,7 @@ const char* kOverview =
     "  analyze   Find the table of contents, map each entry to a page, and\n"
     "            write a bookmark plan (only when it is complete and verified)\n"
     "  apply     Write a NEW PDF with the bookmarks from a plan\n"
-    "  metadata  Find the title, authors, edition and years of a book\n"
+    "  metadata  Find the title, authors, edition, years and ISBNs of a book\n"
     "  text      Show the text found on pages, as JSON\n"
     "\n"
     "Typical use:\n"
@@ -99,7 +99,7 @@ const char* kAnalyzeHelp =
     "  --plan PATH              Write the bookmark plan here (for 'apply')\n"
     "  --report PATH|-          Write the detailed JSON report here\n"
     "                           ('-' = standard output, the default)\n"
-    "  --metadata PATH          Also extract title, authors, edition and years\n"
+    "  --metadata PATH          Also extract title, authors, edition, years, ISBNs\n"
     "                           to this JSON file, in the same run: written first,\n"
     "                           before the contents are analysed, and its pages\n"
     "                           are reused (not OCR'd twice). Kept if the\n"
@@ -178,6 +178,9 @@ const char* kMetadataHelp =
     "pages, then up to 30 while fields are missing. The PDF is not changed.\n"
     "Publication, copyright and printing years are kept apart: a copyright\n"
     "year is never reported as the publication year.\n"
+    "Every ISBN printed on those pages is listed (as ISBN-13, with its printed\n"
+    "format label): a book has one ISBN per format, so none is singled out.\n"
+    "ISBNs do not affect the exit status.\n"
     "\n"
     "Options:\n"
     "  --json PATH|-            Write the full JSON result (with evidence)\n"
@@ -780,8 +783,12 @@ int run_metadata(const std::vector<std::string>& args, const std::string& argv0)
                   << "Copyright year:   "
                   << (r.copyright_year.value
                           ? std::to_string(r.copyright_year.value->year) + "  " : "")
-                  << field_status(r.copyright_year) << '\n'
-                  << "Pages searched:   " << report.searched_pages.size() << " of "
+                  << field_status(r.copyright_year) << '\n';
+        if (r.isbns.empty()) std::cout << "ISBN:             not found in the pages searched\n";
+        for (const auto& isbn : r.isbns)
+            std::cout << "ISBN:             " << isbn.isbn13 << "  ("
+                      << (isbn.label ? *isbn.label : std::string("format not stated")) << ")\n";
+        std::cout << "Pages searched:   " << report.searched_pages.size() << " of "
                   << report.input.page_count
                   << (report.search_covered_document ? " (whole document)" : "") << '\n';
         std::cout << "(Page numbers count from 1 = first page of the file. Use --json\n"

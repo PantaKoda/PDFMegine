@@ -71,8 +71,10 @@ int main(int argc, char** argv) {
     const auto json = engine::metadata_report_json(report.value());
     require(json.find("\"kind\": \"pdfbookmark.metadata\"") != std::string::npos &&
                 json.find("\"publication_year\"") != std::string::npos &&
-                json.find("\"copyright_year\"") != std::string::npos,
-            "JSON report carries all fields");
+                json.find("\"copyright_year\"") != std::string::npos &&
+                r.isbns.size() == 1 &&
+                json.find("\"isbn13\": \"9781234567897\"") != std::string::npos,
+            "JSON report carries all fields and the ISBN list");
     std::atomic_bool cancel{true};
     const auto cancelled = engine::extract_metadata(pdf, options, RunControl{&cancel});
     require(cancelled && cancelled.value().cancelled, "cancellation reported");
