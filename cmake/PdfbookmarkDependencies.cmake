@@ -20,7 +20,7 @@
 # Why prebuilt packages: they are byte-identical to the binaries the OCR
 # parity and all tests were verified with (IMPLEMENTATION_DECISIONS.md E-21).
 #
-# OpenCV is the exception (E-37, issue #7). The official opencv_world DLL
+# OpenCV is the exception (E-39, issue #7). The official opencv_world DLL
 # holds every module and imports Windows Media Foundation, so a program
 # using it cannot start on Windows N editions. The build therefore compiles
 # the same 5.0.0 sources, shipped inside the official package, with only
@@ -294,4 +294,32 @@ function(pdfbookmark_ensure_models)
   endif()
   file(ARCHIVE_EXTRACT INPUT "${_archive}" DESTINATION "${_models}")
   message(STATUS "OCR models installed in ${_models}")
+endfunction()
+
+# ------------------------------------------------------- licence notices
+# Installs the licence notice of every third-party piece the packages ship
+# into `destination`; further arguments go to install() (COMPONENT ...).
+# A missing notice stops the configure: a package must never lose one
+# silently (issue #6). The PP-OCR models' licence is kept in this
+# repository, because the models archive holds only the model files.
+function(pdfbookmark_install_notices destination)
+  get_filename_component(_vcpkg_share "${qpdf_DIR}/.." ABSOLUTE)
+  foreach(_notice
+      "${PDFium_DIR}/LICENSE|PDFium.txt"
+      "${_vcpkg_share}/qpdf/copyright|qpdf.txt"
+      "${_vcpkg_share}/zlib/copyright|zlib.txt"
+      "${_vcpkg_share}/libjpeg-turbo/copyright|libjpeg-turbo.txt"
+      "${ONNXRUNTIME_ROOT}/LICENSE|ONNX-Runtime.txt"
+      "${ONNXRUNTIME_ROOT}/ThirdPartyNotices.txt|ONNX-Runtime-third-party-notices.txt"
+      "${OpenCV_DIR}/LICENSE|OpenCV.txt"
+      "${PDFBOOKMARK_SOURCE_ROOT}/packaging/licenses/PaddleOCR-PP-OCR-models.txt|PaddleOCR-PP-OCR-models.txt")
+    string(REPLACE "|" ";" _pair "${_notice}")
+    list(GET _pair 0 _from)
+    list(GET _pair 1 _to)
+    if(NOT EXISTS "${_from}")
+      message(FATAL_ERROR "Licence notice ${_to} not found at ${_from}. Packages "
+        "must ship every third-party notice (docs/BUILDING.md).")
+    endif()
+    install(FILES "${_from}" DESTINATION "${destination}" RENAME "${_to}" ${ARGN})
+  endforeach()
 endfunction()

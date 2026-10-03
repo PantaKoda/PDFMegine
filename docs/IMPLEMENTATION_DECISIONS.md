@@ -407,7 +407,35 @@ S6 decisions are recorded with its contract in `docs/handoffs/S6_HANDOFF.md`.
 - **Verified:** `dev` build; `metadata_pure` (new cases), `engine_metadata` and `cli_metadata` pass. The three real books in `tests/books/` list the same ISBNs and labels as in E-35 (embedded mode).
 
 
-### E-37 OpenCV built from source without Media Foundation (issue #7, 3 Oct 2026)
+### E-37 Version 0.4.0 for the `MetadataResult` change (3 Oct 2026)
+
+- **Change:** `PDFBOOKMARK_VERSION` is 0.4.0 in `CMakeLists.txt` and `vcpkg.json`; the package names in `docs/BUILDING.md` follow. `PDFB_C_API_VERSION` stays 1.
+- **Why:** E-35 added `isbns` to the exported struct `metadata::MetadataResult`, which changes the C++ layout. With the version still 0.3.0, a client built against the released 0.3.0 headers could not tell the new DLL from the old one.
+- **Assumptions:**
+  - A minor bump is the signal for a C++ layout change while the major version is 0. `SameMajorVersion` still lets `find_package(pdfbookmark 0.3)` accept 0.4.0, so C++ clients must rebuild against the 0.4.0 headers; the C API and Python are unaffected (they pass JSON through).
+  - `PDFBOOKMARK_VERSION` is a cache variable: an existing build folder keeps 0.3.0 until it is reconfigured with `-DPDFBOOKMARK_VERSION=0.4.0` or a fresh cache.
+  - The package sizes quoted in `docs/BUILDING.md` are those of 0.3.0 and were not re-measured. No 0.4.0 package or tag has been made.
+- **Verified:** not built; version strings only.
+
+
+### E-38 The OCR models' licence ships with every package (issue #6, 3 Oct 2026)
+
+- **Change:**
+  - The PaddleOCR `LICENSE` (Apache-2.0) is now in the repository as `packaging/licenses/PaddleOCR-PP-OCR-models.txt`. The SDK installs it to `share/doc/pdfbookmark/licenses/`, and the end-user package to `licenses/`.
+  - The two copies of the notice list (root `CMakeLists.txt` for the app, `library/CMakeLists.txt` for the SDK) are now one function, `pdfbookmark_install_notices` in `cmake/PdfbookmarkDependencies.cmake`.
+  - A missing notice is a configure error. Before, the SDK skipped it silently and the app package only warned.
+  - CI checks that the installed SDK contains the models' licence.
+- **Why:** SDK 0.3.0 shipped the models without their licence. Apache-2.0 section 4(a) requires giving recipients a copy. The install took the file from a local `PaddleOCR/` checkout, which is not in Git and not in the `models-v1` archive, so every fresh clone and every CI build left it out without any message.
+- **Assumptions:**
+  - The models are PaddleOCR PP-OCR models under Apache-2.0, as `models/README.md` states. The committed file is byte-identical to the `LICENSE` of the local PaddleOCR checkout.
+  - PaddleOCR has no `NOTICE` file, so the licence text alone satisfies section 4.
+  - Every configuration that defines these packages has all eight notices available, because the root project always finds PDFium, qpdf (with zlib and libjpeg-turbo from vcpkg), ONNX Runtime and OpenCV.
+  - The already published SDK 0.3.0 is not changed; the fix ships with the next release.
+- **Removed:** the dependency on the local-only `PaddleOCR/` folder for packaging.
+- **Verified:** a `dev` configure, build and `cmake --install --component sdk` from a fresh worktree without `PaddleOCR/` installs all eight notices, and the models' licence equals the PaddleOCR `LICENSE`. With the file removed, the configure stops with an error naming it.
+
+
+### E-39 OpenCV built from source without Media Foundation (issue #7, 3 Oct 2026)
 
 - **Change:**
   - OpenCV is no longer used as the prebuilt `opencv_world500.dll` from the official Windows package. The configure step builds the **same 5.0.0 sources** (the `sources/` folder inside that pinned package) with `BUILD_LIST=core,imgproc,imgcodecs` as one `opencv_world` DLL, into `.deps/opencv-min-<key>` (`pdfbookmark_build_opencv` in `cmake/PdfbookmarkDependencies.cmake`).

@@ -34,7 +34,7 @@ if(PDFBOOKMARK_BUILD_LIBRARY)
 endif()
 
 # Single source of the pdfbookmark version (library, CLI, packages).
-set(PDFBOOKMARK_VERSION "0.3.0" CACHE STRING "pdfbookmark version (MAJOR.MINOR.PATCH)")
+set(PDFBOOKMARK_VERSION "0.4.0" CACHE STRING "pdfbookmark version (MAJOR.MINOR.PATCH)")
 if(NOT PDFBOOKMARK_VERSION MATCHES "^([0-9]+)\\.([0-9]+)\\.([0-9]+)$")
   message(FATAL_ERROR "PDFBOOKMARK_VERSION must be MAJOR.MINOR.PATCH")
 endif()
@@ -495,26 +495,7 @@ if(PDFBOOKMARK_BUILD_ENGINE)
                    packaging/Install.cmd packaging/Uninstall.cmd
                    packaging/install.ps1 packaging/uninstall.ps1
           DESTINATION . COMPONENT ${_app} EXCLUDE_FROM_ALL)
-  get_filename_component(_vcpkg_share "${qpdf_DIR}/.." ABSOLUTE)
-  foreach(_notice
-      "${PDFium_DIR}/LICENSE|PDFium.txt"
-      "${_vcpkg_share}/qpdf/copyright|qpdf.txt"
-      "${_vcpkg_share}/zlib/copyright|zlib.txt"
-      "${_vcpkg_share}/libjpeg-turbo/copyright|libjpeg-turbo.txt"
-      "${ONNXRUNTIME_ROOT}/LICENSE|ONNX-Runtime.txt"
-      "${ONNXRUNTIME_ROOT}/ThirdPartyNotices.txt|ONNX-Runtime-third-party-notices.txt"
-      "${OpenCV_DIR}/LICENSE|OpenCV.txt"
-      "${CMAKE_CURRENT_SOURCE_DIR}/PaddleOCR/LICENSE|PaddleOCR-PP-OCR-models.txt")
-    string(REPLACE "|" ";" _pair "${_notice}")
-    list(GET _pair 0 _from)
-    list(GET _pair 1 _to)
-    if(EXISTS "${_from}")
-      install(FILES "${_from}" DESTINATION licenses RENAME "${_to}"
-              COMPONENT ${_app} EXCLUDE_FROM_ALL)
-    else()
-      message(WARNING "Licence notice not found for the app package: ${_from}")
-    endif()
-  endforeach()
+  pdfbookmark_install_notices(licenses COMPONENT ${_app} EXCLUDE_FROM_ALL)
 
   if(OCR_BUILD_TESTS)
     add_executable(pdfbookmark_engine_text_tests tests/engine/engine_text_test.cpp)

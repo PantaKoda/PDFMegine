@@ -46,7 +46,7 @@ All pinned in one place, `cmake/PdfbookmarkDependencies.cmake`, plus `vcpkg.json
 | Clipper2 | commit `f9c5eb6e` | vendored in `third_party/clipper2` | In the repository |
 
 - **Download location:** `.deps/` in the repository root. It is shared by all build trees and ignored by Git. Delete it to force fresh downloads.
-- **OpenCV is built from source** (E-37). The official `opencv_world500.dll` contains every module and imports Windows Media Foundation, so a program that loads it cannot start on Windows N editions without the Media Feature Pack. The configure step therefore compiles the same 5.0.0 sources with only the modules the OCR code uses, into `.deps/opencv-min-<key>`. This takes about 2.5 minutes per configuration (Debug, Release), once; the key changes when the pinned package or the build options change. The resulting `opencv_world500.dll` imports only `KERNEL32`, `ole32` and the C++ runtime. During that build OpenCV downloads Intel IPP (`ippicv`) itself, checked against its own hash, into `.deps/downloads/opencv-cache`. If the build fails, the log path is in the error message.
+- **OpenCV is built from source** (E-39). The official `opencv_world500.dll` contains every module and imports Windows Media Foundation, so a program that loads it cannot start on Windows N editions without the Media Feature Pack. The configure step therefore compiles the same 5.0.0 sources with only the modules the OCR code uses, into `.deps/opencv-min-<key>`. This takes about 2.5 minutes per configuration (Debug, Release), once; the key changes when the pinned package or the build options change. The resulting `opencv_world500.dll` imports only `KERNEL32`, `ole32` and the C++ runtime. During that build OpenCV downloads Intel IPP (`ippicv`) itself, checked against its own hash, into `.deps/downloads/opencv-cache`. If the build fails, the log path is in the error message.
 - **Your own copies:** pass `-DPDFium_DIR=…`, `-DONNXRUNTIME_ROOT=…` or `-DOpenCV_DIR=…`, and that package is not downloaded.
 - **Offline models:** `-DPDFBOOKMARK_MODELS_ARCHIVE=<path to pdfbookmark-models-v1.zip>`.
 - **Changing a version:** update the URL and SHA-256 together, run the full `dev` tests including `golden_parity`, and record the change in `docs/IMPLEMENTATION_DECISIONS.md`.
@@ -60,10 +60,10 @@ cmake --preset release
 cmake --build --preset release --target pdfbookmarkCli
 cmake --install out/build/release --component app --prefix dist/pdfbookmark
 cpack --config out/build/release/CPackConfig.cmake
-copy out\build\release\package\pdfbookmark-0.3.0-win64.zip dist\
+copy out\build\release\package\pdfbookmark-0.4.0-win64.zip dist\
 ```
 
-**Deliverable: `dist/pdfbookmark-0.3.0-win64.zip`** (141 MB, one top-level folder `pdfbookmark-0.3.0-win64/`). `dist/pdfbookmark/` is the same content unzipped. The version comes from the CMake cache variable `PDFBOOKMARK_VERSION` (default `0.3.0`) and is printed by `pdfbookmark --version`. The user guide inside the package is `packaging/README.txt`.
+**Deliverable: `dist/pdfbookmark-0.4.0-win64.zip`** (141 MB, one top-level folder `pdfbookmark-0.4.0-win64/`). `dist/pdfbookmark/` is the same content unzipped. The version comes from the CMake cache variable `PDFBOOKMARK_VERSION` (default `0.4.0`) and is printed by `pdfbookmark --version`. The user guide inside the package is `packaging/README.txt`.
 
 ### Installing as a command (users)
 
@@ -89,7 +89,7 @@ Extract the ZIP and double-click `Install.cmd`; no administrator rights are need
 | `models/det/inference.onnx`, `models/rec/inference.onnx`, `models/rec/charset.txt` | The only model files the OCR code reads (the `.yml` files are not read) |
 | `Add bookmarks.cmd`, `Add bookmarks (allow partial).cmd`, `README.txt` | Drag-and-drop use and the non-developer guide (sources in `packaging/`) |
 | `Install.cmd`, `install.ps1`, `Uninstall.cmd`, `uninstall.ps1` | Per-user install onto `PATH` and removal |
-| `licenses/` | PDFium, qpdf, zlib, libjpeg-turbo, ONNX Runtime (plus third-party notices), OpenCV, and PaddleOCR (PP-OCR models) |
+| `licenses/` | PDFium, qpdf, zlib, libjpeg-turbo, ONNX Runtime (plus third-party notices), OpenCV, and PaddleOCR (PP-OCR models). The same eight notices go into the SDK. The models' licence is `packaging/licenses/PaddleOCR-PP-OCR-models.txt` in this repository; the others come from the dependency packages. A missing notice stops the configure (`pdfbookmark_install_notices`, E-38) |
 
 **Not shipped:** tests, fixtures and `tests/books/`; the OCR tools and Python tools; headers, `.lib` and CMake files; test hooks (compiled out); the model `.yml` files, `corpus/` and `golden/`; and the unused runtime DLLs `fmt`, `turbojpeg`, `onnxruntime_providers_shared`, `msvcp140_2`, `msvcp140_atomic_wait` and `msvcp140_codecvt_ids`.
 
@@ -107,17 +107,17 @@ The CLI is a client of the shared library `pdfbookmark.dll`. The SDK is a CMake 
 ```powershell
 cmake --preset release;   cmake --build --preset release --target pdfbookmark
 cmake --preset sdk-debug; cmake --build --preset sdk-debug
-cmake --install out/build/release   --component sdk --prefix out/sdk/pdfbookmark-0.3.0-win64
-cmake --install out/build/sdk-debug --component sdk --prefix out/sdk/pdfbookmark-0.3.0-win64
-cd out/sdk; cmake -E tar cf ../../dist/pdfbookmark-sdk-0.3.0-win64.zip --format=zip pdfbookmark-0.3.0-win64
+cmake --install out/build/release   --component sdk --prefix out/sdk/pdfbookmark-0.4.0-win64
+cmake --install out/build/sdk-debug --component sdk --prefix out/sdk/pdfbookmark-0.4.0-win64
+cd out/sdk; cmake -E tar cf ../../dist/pdfbookmark-sdk-0.4.0-win64.zip --format=zip pdfbookmark-0.4.0-win64
 ```
 
-**Deliverable: `dist/pdfbookmark-sdk-0.3.0-win64.zip`** (188 MB zipped, 428 MB unzipped, measured for 0.3.0; most of it is the Debug OpenCV DLL and the models. From E-37 the OpenCV DLLs are smaller: Release 54 MB instead of 80 MB, Debug 88 MB instead of 140 MB). It contains:
+**Deliverable: `dist/pdfbookmark-sdk-0.4.0-win64.zip`** (188 MB zipped, 428 MB unzipped, measured for 0.3.0; most of it is the Debug OpenCV DLL and the models. From E-39 the OpenCV DLLs are smaller: Release 54 MB instead of 80 MB, Debug 88 MB instead of 140 MB). It contains:
 - `include/`: the public headers, `pdfbookmark.hpp` (C++) and `pdfbookmark.h` (C);
 - `lib/`: `pdfbookmark.lib` and `pdfbookmarkd.lib`, plus `lib/cmake/pdfbookmark`;
 - `bin/`: the Release DLLs; `bin/debug/`: the Debug dependency DLLs (`pdfbookmarkd.dll` itself is in `bin/`);
 - `share/pdfbookmark/models/`;
-- `share/doc/pdfbookmark/`: `API.md`, `JSON_FORMATS.md`, `AGENTS.md` (from `docs/AGENTS_SDK.md`), `examples/basic` (C++), `examples/qt-quick` (Qt 6 QML), `examples/python` (a ctypes wrapper over the C API) and licences.
+- `share/doc/pdfbookmark/`: `API.md`, `JSON_FORMATS.md`, `AGENTS.md` (from `docs/AGENTS_SDK.md`), `examples/basic` (C++), `examples/qt-quick` (Qt 6 QML), `examples/python` (a ctypes wrapper over the C API) and `licenses/` (the eight third-party notices, including `PaddleOCR-PP-OCR-models.txt` for the models).
 
 The install fails if any dependency other than an optional Windows component is unresolved. `onnxruntime.dll` is always installed from the pinned ONNX Runtime, because Windows 11 has an unrelated `System32\onnxruntime.dll` that the dependency scan would otherwise pick up and then filter out as a system file.
 
@@ -157,8 +157,8 @@ Clients use `find_package(pdfbookmark 0.1 CONFIG REQUIRED)`, link `pdfbookmark::
 3. Push a tag with the same number:
 
 ```powershell
-git tag v0.3.0
-git push origin v0.3.0
+git tag v0.4.0
+git push origin v0.4.0
 ```
 
 The workflow refuses a tag that doesn't match `PDFBOOKMARK_VERSION`.
