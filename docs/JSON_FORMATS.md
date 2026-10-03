@@ -144,8 +144,9 @@ This is produced by `pdfb_extract_metadata`, `extract_metadata()` + `metadata_re
 
 | Member | Meaning |
 | --- | --- |
-| `input`, `policy_id` | §2; `"s6-document-metadata-v1"` |
+| `input`, `policy_id` | §2; `"s6-document-metadata-v2"` (v2 adds `isbns`; the fields are unchanged) |
 | `fields` | `title`, `contributors`, `edition`, `publication_year`, `copyright_year`, each a **field** (below) |
+| `isbns[]` | Every ISBN printed in the pages searched (below); `[]` when none was found |
 | `pages[]` | `{page_index, role, reasons}` for each page examined |
 | `search` | `pages[]` searched, `covered_document`, `stop_reasons[]`, `cancelled` |
 | `acquisition`, `diagnostics` | §2 |
@@ -167,6 +168,21 @@ A **field** has this shape:
 | `publication_year`, `copyright_year` | `{ "year": 2012, "kind": "publication", "statement": "Second edition published 2012" }` |
 
 A copyright year is never reported as the publication year. "Not found" means only that it wasn't found in the pages searched.
+
+An **ISBN** entry has this shape:
+```jsonc
+{ "isbn13": "9781439811924",        // 13 digits, no separators; a printed ISBN-10 is converted
+  "printed": "978-1-4398-1192-4",   // first printed form (dashes as ASCII "-")
+  "form": "isbn13",                 // or "isbn10": the form that was printed
+  "format": "hardcover",            // "hardcover", "paperback", "electronic", "print" or "unknown"
+  "label": "hardback : alk. paper", // the printed qualifier, or null
+  "evidence": [ { "source": { /* source reference */ }, "text": "ISBN 978-1-4398-1192-4 (hardback : alk. paper)", "reason": "ISBN statement" } ] }
+```
+
+- An ISBN identifies one edition **in one format**, so a book often prints several (hardcover, paperback, ebook). All of them are listed, in order of first appearance; none is marked as "the" ISBN.
+- Only numbers with a valid check digit are listed. A number on an ISBN line that fails the check (often an OCR misread) is named in `diagnostics` instead.
+- The same ISBN printed twice (for example as ISBN-10 and as ISBN-13) is one entry with one evidence item per line.
+- `isbns` does not affect the search (it stops when the fields are resolved) or the CLI exit status.
 
 ## 7. C API result objects
 

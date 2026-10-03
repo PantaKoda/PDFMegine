@@ -81,7 +81,7 @@ int main() {
     const auto result = extract({contents, copyright, title, cover});
     require(static_cast<bool>(result), "extract succeeds");
     const auto& r = result.value();
-    require(r.policy_id == "s6-document-metadata-v1", "policy id");
+    require(r.policy_id == "s6-document-metadata-v2", "policy id");
     require(r.pages.size() == 4 && r.pages[0].role == PageRole::Cover &&
                 r.pages[1].role == PageRole::TitlePage &&
                 r.pages[2].role == PageRole::Copyright &&
@@ -113,6 +113,13 @@ int main() {
                          [](const auto& c) { return c.value.year == 2012 &&
                                                     c.value.kind == YearKind::Publication; }),
             "the chosen year is not repeated among alternatives");
+    require(r.isbns.size() == 1 && r.isbns[0].isbn13 == "9781234567897" &&
+                r.isbns[0].printed == "978-1-2345-6789-7" &&
+                r.isbns[0].form == IsbnForm::Isbn13 &&
+                r.isbns[0].format == IsbnFormat::Unknown && !r.isbns[0].label &&
+                r.isbns[0].evidence.size() == 1 &&
+                r.isbns[0].evidence[0].source.page_index == 3,
+            "the ISBN on the copyright page is listed with its source line");
 
     // Real-book layout: a smaller lead-in line ("Introduction to") above
     // larger title lines, words split across regions on one line, and a
@@ -157,6 +164,54 @@ int main() {
                 crc.value().publication_year.reasons.back().find("copyright year (2011)") !=
                     std::string::npos,
             "copyright year is not reported as the publication year");
+    require(crc.value().isbns.size() == 1 &&
+                crc.value().isbns[0].isbn13 == "9781439811924" &&
+                crc.value().isbns[0].format == IsbnFormat::Paperback &&
+                crc.value().isbns[0].label == std::string("Paperback"),
+            "'International Standard Book Number' with its printed format label");
+
+    // Every ISBN is listed: one per format, ISBN-10 converted, repeats merged.
+    const auto isbn_page = page(4, {
+        {"\xC2\xA9 2011 by Example Press", 60, 8},
+        {"ISBN 978-1-4398-1192-4 (hardback : alk. paper)", 80, 8},
+        {"978-1-4398-1193-1 (ebook)", 95, 8},                // Line below: no keyword.
+        {"ISBN-10: 1-4398-1192-X", 110, 8},                  // Same book as line 1.
+        {"ISBN-10 0-306-40615-2 ISBN-13 978-0-306-40615-7", 125, 8},  // One ISBN twice.
+        {"e-ISBN 978\xE2\x80\x93" "3\xE2\x80\x93" "642\xE2\x80\x93" "11111\xE2\x80\x93" "2",
+         140, 8},                                            // En dashes.
+        {"ISBN 0 19 853453 1 pbk", 155, 8},
+        {"ISBN 978-1-4398-1192-5", 170, 8},                  // Wrong check digit.
+        {"Printed in the United States of America", 185, 8},
+        {"Order number 9781234567897", 200, 8}});            // Not an ISBN statement.
+    const auto listed = extract({cover, title, isbn_page});
+    require(static_cast<bool>(listed), "extract with an ISBN page succeeds");
+    const auto& isbns = listed.value().isbns;
+    require(isbns.size() == 5, "five distinct ISBNs; the invalid and the unlabelled "
+                               "number are not listed");
+    require(isbns[0].isbn13 == "9781439811924" && isbns[0].format == IsbnFormat::Hardcover &&
+                isbns[0].label == std::string("hardback : alk. paper") &&
+                isbns[0].form == IsbnForm::Isbn13 && isbns[0].evidence.size() == 2,
+            "hardback ISBN; its ISBN-10 form (check digit X) is merged as evidence");
+    require(isbns[1].isbn13 == "9781439811931" && isbns[1].format == IsbnFormat::Electronic &&
+                isbns[1].evidence[0].reason == "Line directly below an ISBN statement",
+            "an ISBN on the line below an ISBN statement is listed");
+    require(isbns[2].isbn13 == "9780306406157" && isbns[2].form == IsbnForm::Isbn10 &&
+                isbns[2].printed == "0-306-40615-2" && isbns[2].evidence.size() == 1,
+            "ISBN-10 and ISBN-13 of one book on one line are one entry; the "
+            "'ISBN-10'/'ISBN-13' tags are not read as digits");
+    require(isbns[3].isbn13 == "9783642111112" && isbns[3].format == IsbnFormat::Electronic &&
+                isbns[3].label == std::string("e-ISBN") &&
+                isbns[3].printed == "978-3-642-11111-2",
+            "e-ISBN with typographic dashes");
+    require(isbns[4].isbn13 == "9780198534532" && isbns[4].format == IsbnFormat::Paperback &&
+                isbns[4].label == std::string("pbk") && isbns[4].printed == "0 19 853453 1",
+            "space-separated ISBN-10 with a bare format word");
+    const auto& diagnostics = listed.value().diagnostics;
+    require(std::any_of(diagnostics.begin(), diagnostics.end(), [](const std::string& d) {
+                return d.find("978-1-4398-1192-5") != std::string::npos &&
+                       d.find("check digit") != std::string::npos;
+            }),
+            "an ISBN with a wrong check digit is reported, not listed");
 
     // A series page lists other books with their editors; the title
     // statement ", Name and Name" confirms this book's authors.
@@ -201,7 +256,8 @@ int main() {
     require(body && body.value().title.status == FieldStatus::NotFoundInSearch &&
                 body.value().contributors.status == FieldStatus::NotFoundInSearch &&
                 body.value().edition.status == FieldStatus::NotFoundInSearch &&
-                body.value().publication_year.status == FieldStatus::NotFoundInSearch,
+                body.value().publication_year.status == FieldStatus::NotFoundInSearch &&
+                body.value().isbns.empty(),
             "body pages give not-found fields; a metadata hint never resolves alone");
 
     // Missing/failed pages are reported, duplicates rejected.

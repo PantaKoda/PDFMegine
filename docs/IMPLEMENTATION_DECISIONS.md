@@ -370,3 +370,20 @@ S6 decisions are recorded with its contract in `docs/handoffs/S6_HANDOFF.md`.
 - **Assumptions:**
   - Existing 0.2.0 clients keep working after a rebuild. `SameMajorVersion` lets `find_package(pdfbookmark 0.2)` accept 0.3.0.
   - `PDFB_C_API_VERSION` stays 1 because the C change is additive. `pdfb_analyze_book` is new in this release, so its signature was changed before any client used it.
+
+
+### E-35 ISBN list in the metadata result (3 Oct 2026)
+
+- **Change:**
+  - `metadata::MetadataResult` has a new member `isbns`, a list of `IsbnValue` (`isbn13`, `printed`, `form`, `format`, `label`, `evidence`). The rules are S6-07 in `docs/handoffs/S6_HANDOFF.md`.
+  - The metadata report JSON has a new top-level array `isbns` (`docs/JSON_FORMATS.md` §6). The C API and Python return it unchanged, because they pass this JSON through.
+  - `pdfbookmark metadata` prints one `ISBN:` line per ISBN.
+  - The S6 policy identity is now `s6-document-metadata-v2`.
+- **Why:** the owner asked for the ISBN as an identifier of a book and its edition. An ISBN identifies one edition in one format, so an edition has several and there is no single ISBN per book+edition. The owner decided (3 Oct 2026) to store every ISBN found and decide later how to use the list.
+- **Assumptions:**
+  - `isbns` is a plain list, not a field with a status. No ISBN is "the" value, so Resolved/Ambiguous does not apply; an empty list means none was found in the pages searched.
+  - Only numbers that pass the check digit are listed. A failing number on an ISBN line is reported in `diagnostics`, so an OCR misread is visible but never stored as an ISBN.
+  - ISBNs do not take part in the search stop or in the CLI exit status. Otherwise every book without a printed ISBN would be searched to the page limit and reported as partial.
+  - The JSON stays `schema_version` 1: the change adds a member and changes none. A client that rejects unknown members of this report would need updating; the reports are outputs, and strict member checks apply only to plan input.
+  - C++ clients must rebuild, because `MetadataResult` gained a member. `PDFBOOKMARK_VERSION` (0.3.0) and `PDFB_C_API_VERSION` (1) are unchanged here; the version bump belongs to the next release commit.
+- **Verified:** root `dev` build, 26/26 suites (`metadata_pure`, `engine_metadata` and `cli_metadata` cover the list). Real books (3 Oct 2026, read-only, `tests/books/`): *Computational Physics* (Wiley, 4th ed.) lists 3 ISBNs from its copyright page (Print, ePDF, ePub); *Numerical Recipes* (Cambridge, 3rd ed.) lists 2 (hardback, eBook), each printed as ISBN-13 and ISBN-10 and merged into one entry. Both match the printed pages, and the input hashes are unchanged. Both files have embedded text (0 OCR attempts). *Black Holes, White Dwarfs and Neutron Stars* (`shapiro1983.pdf`, a scan with an embedded OCR layer) lists its one ISBN, 9780471873167, both from the embedded layer (printed there with stray spaces, "978-0-47 1-873 16-7") and from our own OCR (`--mode ocr --max-pages 4`, 4 OCR attempts); the ISBN-10 line is merged into the same entry.

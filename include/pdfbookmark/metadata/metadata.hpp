@@ -2,7 +2,8 @@
 
 // S6 Document Metadata Extraction. Given positioned text of selected pages
 // (S1 values), identify the document's title, contributors, edition and
-// years, with evidence and uncertainty per field. Pure computation: never
+// years, with evidence and uncertainty per field, and list every ISBN
+// printed on those pages. Pure computation: never
 // opens a PDF, runs OCR or fetches pages (Engine decides which pages).
 
 #include <pdfbookmark/core/types.hpp>
@@ -55,6 +56,26 @@ struct YearValue {
     std::string statement;  // The line it was read from.
 };
 
+// One ISBN identifies one edition in one format (hardcover, paperback,
+// ebook...), so a book usually prints several. All are listed; none is
+// chosen as "the" ISBN.
+enum class IsbnForm { Isbn10, Isbn13 };  // The form that was printed.
+enum class IsbnFormat {
+    Unknown,     // No recognised format label next to the number.
+    Print,       // "print", binding not stated.
+    Hardcover,
+    Paperback,
+    Electronic   // ebook, e-ISBN, PDF, EPUB, online.
+};
+struct IsbnValue {
+    std::string isbn13;   // 13 digits, no separators; an ISBN-10 is converted.
+    std::string printed;  // First printed form, e.g. "978-1-2345-6789-7".
+    IsbnForm form = IsbnForm::Isbn13;
+    IsbnFormat format = IsbnFormat::Unknown;
+    std::optional<std::string> label;  // Printed qualifier, e.g. "hardback".
+    std::vector<Evidence> evidence;    // Every line that prints this ISBN.
+};
+
 template <typename T>
 struct Candidate {
     T value;
@@ -98,6 +119,9 @@ struct MetadataResult {
     Field<EditionValue> edition;
     Field<YearValue> publication_year;  // Publication statements only.
     Field<YearValue> copyright_year;    // "©" / "Copyright" statements.
+    // Every ISBN with a valid check digit, in order of first appearance.
+    // Empty means none was found in the supplied pages.
+    std::vector<IsbnValue> isbns;
     std::vector<PageAssessment> pages;  // Physical order.
     std::vector<std::string> diagnostics;
     std::string policy_id;
@@ -114,5 +138,7 @@ const char* status_name(FieldStatus status);
 const char* role_name(PageRole role);
 const char* role_name(ContributorRole role);
 const char* kind_name(YearKind kind);
+const char* form_name(IsbnForm form);
+const char* format_name(IsbnFormat format);
 
 }  // namespace pdfbookmark::metadata

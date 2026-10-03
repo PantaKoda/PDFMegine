@@ -20,7 +20,8 @@ if(NOT LAST_OUT MATCHES "Title: +Parallel Worlds" OR
    NOT LAST_OUT MATCHES "Jane Q. Doe \\(author\\), John Smith \\(author\\)" OR
    NOT LAST_OUT MATCHES "Edition: +Second Edition" OR
    NOT LAST_OUT MATCHES "Publication year: 2012" OR
-   NOT LAST_OUT MATCHES "Copyright year: +ambiguous")
+   NOT LAST_OUT MATCHES "Copyright year: +ambiguous" OR
+   NOT LAST_OUT MATCHES "ISBN: +9781234567897")
   message(FATAL_ERROR "Unexpected metadata summary:\n${LAST_OUT}")
 endif()
 expect_exit(0 "${CLI}" metadata "${PDF}" --mode embedded --json "${WORK}/meta.json")
@@ -28,9 +29,11 @@ file(READ "${WORK}/meta.json" json)
 string(JSON title GET "${json}" fields title value title)
 string(JSON year GET "${json}" fields publication_year value year)
 string(JSON first_page GET "${json}" pages 0 role)
+string(JSON isbn GET "${json}" isbns 0 isbn13)
 if(NOT title STREQUAL "Parallel Worlds" OR NOT year EQUAL 2012 OR
-   NOT first_page STREQUAL "title")  # Text-only first page: title, not cover.
-  message(FATAL_ERROR "Unexpected metadata JSON: ${title} ${year} ${first_page}")
+   NOT first_page STREQUAL "title" OR  # Text-only first page: title, not cover.
+   NOT isbn STREQUAL "9781234567897")
+  message(FATAL_ERROR "Unexpected metadata JSON: ${title} ${year} ${first_page} ${isbn}")
 endif()
 expect_exit(1 "${CLI}" metadata "${PDF}" --mode embedded --json "${WORK}/meta.json")
 expect_exit(3 "${CLI}" metadata "${PDF}" --mode embedded --max-pages 2)

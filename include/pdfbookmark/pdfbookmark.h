@@ -147,7 +147,7 @@ PDFB_API pdfb_status pdfb_apply(const char* pdf_path, const char* output_path,
                                 const char* plan_json, const char* options_json,
                                 pdfb_cancel_token* cancel, char** out_result_json);
 
-/* Title, contributors, edition, publication and copyright year.
+/* Title, contributors, edition, publication and copyright year, ISBNs.
  * Options: reading options, plus "max_pages": N (default 30).
  * *out_report_json: the metadata report (same format as `pdfbookmark metadata`). */
 PDFB_API pdfb_status pdfb_extract_metadata(const char* pdf_path, const char* options_json,
