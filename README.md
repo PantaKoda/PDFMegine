@@ -28,7 +28,7 @@ cmake --build --preset dev
 ctest --preset dev
 ```
 
-The first configure downloads the pinned dependencies (PDFium, ONNX Runtime, OpenCV, OCR models) and builds qpdf with vcpkg. Details are in `docs/BUILDING.md`.
+The first configure downloads the pinned dependencies (PDFium, ONNX Runtime, OpenCV, OCR models), builds a minimal OpenCV from its sources (a few minutes) and builds qpdf with vcpkg. Details are in `docs/BUILDING.md`.
 
 ## Repository map
 

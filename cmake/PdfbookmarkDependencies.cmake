@@ -8,7 +8,8 @@
 #   Package        Version      Source                                    How
 #   PDFium         155.0.8057   bblanchon/pdfium-binaries chromium/8057   download
 #   ONNX Runtime   1.30.0       microsoft/onnxruntime v1.30.0             download
-#   OpenCV         5.0.0        opencv/opencv 5.0.0 Windows package       download
+#   OpenCV         5.0.0        opencv/opencv 5.0.0 Windows package       download, then built
+#                               (its sources/ folder; see below)          from source
 #   qpdf           12.3.2       vcpkg (vcpkg.json, pinned baseline)       vcpkg
 #   OCR models     v1           this repository's release "models-v1"     download
 #
@@ -18,6 +19,12 @@
 #
 # Why prebuilt packages: they are byte-identical to the binaries the OCR
 # parity and all tests were verified with (IMPLEMENTATION_DECISIONS.md E-21).
+#
+# OpenCV is the exception (E-37, issue #7). The official opencv_world DLL
+# holds every module and imports Windows Media Foundation, so a program
+# using it cannot start on Windows N editions. The build therefore compiles
+# the same 5.0.0 sources, shipped inside the official package, with only
+# the modules the OCR code uses (pdfbookmark_build_opencv below).
 
 include_guard(GLOBAL)
 
@@ -51,6 +58,90 @@ function(pdfbookmark_fetch name url sha256 out_var)
   set(${out_var} "${_dir}" PARENT_SCOPE)
 endfunction()
 
+# Builds opencv_world from `sources` (the official 5.0.0 source tree) with
+# only core, imgproc and imgcodecs (plus flann and geometry, which imgproc
+# needs): no video I/O, no GUI, so no Media Foundation, GDI or FFmpeg.
+# Everything else keeps OpenCV's defaults, as in the official build (IPP,
+# the bundled image codecs), so results stay the same. Built once per
+# configuration into <deps>/opencv-min-<key>; sets <out_var> to that prefix.
+function(pdfbookmark_build_opencv sources package_sha256 out_var)
+  set(_options
+    -DBUILD_LIST=core,imgproc,imgcodecs
+    -DBUILD_opencv_world=ON
+    -DBUILD_SHARED_LIBS=ON
+    -DBUILD_opencv_highgui=OFF
+    -DBUILD_opencv_videoio=OFF
+    -DWITH_MSMF=OFF
+    -DWITH_DSHOW=OFF
+    -DWITH_FFMPEG=OFF
+    -DBUILD_opencv_apps=OFF
+    -DBUILD_TESTS=OFF
+    -DBUILD_PERF_TESTS=OFF
+    -DBUILD_EXAMPLES=OFF
+    -DBUILD_DOCS=OFF
+    -DBUILD_JAVA=OFF
+    -DBUILD_opencv_python2=OFF
+    -DBUILD_opencv_python3=OFF
+    -DBUILD_opencv_js=OFF
+    -DOPENCV_GENERATE_SETUPVARS=OFF)
+  # The key names the sources and the options: changing either rebuilds.
+  string(SHA256 _key "${package_sha256};${_options}")
+  string(SUBSTRING "${_key}" 0 12 _key)
+  set(_prefix "${PDFBOOKMARK_DEPS_DIR}/opencv-min-${_key}")
+  if(CMAKE_CONFIGURATION_TYPES)
+    set(_configs Debug Release)
+  elseif(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(_configs Debug)
+  else()
+    set(_configs Release)
+  endif()
+  foreach(_config IN LISTS _configs)
+    if(EXISTS "${_prefix}/.complete-${_config}")
+      continue()
+    endif()
+    set(_build "${PDFBOOKMARK_DEPS_DIR}/build/opencv-min-${_key}-${_config}")
+    set(_log "${PDFBOOKMARK_DEPS_DIR}/build/opencv-min-${_key}-${_config}.log")
+    message(STATUS "Building OpenCV 5.0.0 (core, imgproc, imgcodecs; ${_config}). "
+      "This takes a few minutes, once. Log: ${_log}")
+    file(REMOVE_RECURSE "${_build}")
+    file(MAKE_DIRECTORY "${_build}")
+    # Same compilers as this build, where they are already known.
+    set(_compilers "")
+    foreach(_language C CXX)
+      if(CMAKE_${_language}_COMPILER)
+        list(APPEND _compilers "-DCMAKE_${_language}_COMPILER=${CMAKE_${_language}_COMPILER}")
+      endif()
+    endforeach()
+    set(_generator -G "${CMAKE_GENERATOR}")
+    if(CMAKE_GENERATOR_PLATFORM)
+      list(APPEND _generator -A "${CMAKE_GENERATOR_PLATFORM}")
+    endif()
+    execute_process(
+      COMMAND "${CMAKE_COMMAND}" -S "${sources}" -B "${_build}" ${_generator}
+        "-DCMAKE_BUILD_TYPE=${_config}" ${_compilers}
+        "-DCMAKE_INSTALL_PREFIX=${_prefix}"
+        # OpenCV downloads Intel IPP (ippicv) itself, checked against its own hash.
+        "-DOPENCV_DOWNLOAD_PATH=${PDFBOOKMARK_DEPS_DIR}/downloads/opencv-cache"
+        ${_options}
+      COMMAND_ECHO NONE OUTPUT_FILE "${_log}" ERROR_FILE "${_log}"
+      RESULT_VARIABLE _result)
+    if(_result EQUAL 0)
+      execute_process(
+        COMMAND "${CMAKE_COMMAND}" --build "${_build}" --config ${_config} --target install
+        OUTPUT_FILE "${_log}.build" ERROR_FILE "${_log}.build"
+        RESULT_VARIABLE _result)
+      set(_log "${_log}.build")
+    endif()
+    if(NOT _result EQUAL 0)
+      message(FATAL_ERROR "Building OpenCV (${_config}) failed (${_result}); see ${_log}. "
+        "To use your own OpenCV instead, pass -DOpenCV_DIR=<dir> (docs/BUILDING.md).")
+    endif()
+    file(REMOVE_RECURSE "${_build}")  # Several hundred MB; the install is kept.
+    file(TOUCH "${_prefix}/.complete-${_config}")
+  endforeach()
+  set(${out_var} "${_prefix}" PARENT_SCOPE)
+endfunction()
+
 # Makes the named packages (pdfium, onnxruntime, opencv) available, unless
 # the caller already pointed CMake at its own copy.
 function(pdfbookmark_fetch_dependencies)
@@ -71,7 +162,11 @@ function(pdfbookmark_fetch_dependencies)
     else()
       message(FATAL_ERROR "Unknown dependency ${_package}")
     endif()
-    if(${_var})
+    # A value inside the download cache is one this function set on an
+    # earlier configure: re-evaluate it, so a changed pin reaches existing
+    # build trees. Anything else is the caller's own copy.
+    string(FIND "${${_var}}" "${PDFBOOKMARK_DEPS_DIR}/" _ours)
+    if(${_var} AND NOT _ours EQUAL 0)
       continue()  # Caller-provided copy.
     endif()
     if(NOT _windows_x64)
@@ -90,11 +185,15 @@ function(pdfbookmark_fetch_dependencies)
       set(ONNXRUNTIME_ROOT "${_dir}/onnxruntime-win-x64-1.30.0" CACHE PATH
         "ONNX Runtime root (pinned download)" FORCE)
     else()
-      # The official Windows package is a self-extracting 7-Zip archive.
+      # The official Windows package is a self-extracting 7-Zip archive. Only
+      # its sources/ folder is used; its prebuilt DLL is not (see the top).
+      set(_opencv_sha256 9c6c1fcea58acdf06edba13148b2246e00c2658143fa51e61ecd370db8c39f63)
       pdfbookmark_fetch(opencv
         "https://github.com/opencv/opencv/releases/download/5.0.0/opencv-5.0.0-windows.exe"
-        9c6c1fcea58acdf06edba13148b2246e00c2658143fa51e61ecd370db8c39f63 _dir)
-      set(OpenCV_DIR "${_dir}/opencv/build" CACHE PATH "OpenCV package (pinned download)" FORCE)
+        ${_opencv_sha256} _dir)
+      pdfbookmark_build_opencv("${_dir}/opencv/sources" ${_opencv_sha256} _dir)
+      set(OpenCV_DIR "${_dir}" CACHE PATH
+        "OpenCV built from the pinned 5.0.0 sources (core, imgproc, imgcodecs)" FORCE)
     endif()
   endforeach()
 endfunction()
