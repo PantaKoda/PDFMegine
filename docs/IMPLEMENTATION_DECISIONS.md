@@ -433,3 +433,25 @@ S6 decisions are recorded with its contract in `docs/handoffs/S6_HANDOFF.md`.
   - The already published SDK 0.3.0 is not changed; the fix ships with the next release.
 - **Removed:** the dependency on the local-only `PaddleOCR/` folder for packaging.
 - **Verified:** a `dev` configure, build and `cmake --install --component sdk` from a fresh worktree without `PaddleOCR/` installs all eight notices, and the models' licence equals the PaddleOCR `LICENSE`. With the file removed, the configure stops with an error naming it.
+
+
+### E-39 OpenCV built from source without Media Foundation (issue #7, 3 Oct 2026)
+
+- **Change:**
+  - OpenCV is no longer used as the prebuilt `opencv_world500.dll` from the official Windows package. The configure step builds the **same 5.0.0 sources** (the `sources/` folder inside that pinned package) with `BUILD_LIST=core,imgproc,imgcodecs` as one `opencv_world` DLL, into `.deps/opencv-min-<key>` (`pdfbookmark_build_opencv` in `cmake/PdfbookmarkDependencies.cmake`).
+  - Video I/O, the GUI module, Media Foundation, DirectShow and FFmpeg are off. Everything else keeps OpenCV's defaults, as in the official build: Intel IPP, the Concurrency parallel backend, and the bundled JPEG, PNG, TIFF, WebP, JPEG 2000 and GIF codecs.
+  - A dependency path that points into `.deps/` is now re-evaluated on every configure, so existing build trees pick up a changed pin. A path outside `.deps/` is still the caller's own copy and is left alone.
+  - CI and the release workflow cache `.deps/opencv-min-*`.
+- **Why:** the official DLL imports `MFPlat.DLL`, `MF.dll` and `MFReadWrite.dll` in its normal import table. They exist on Windows N and KN editions only with the Media Feature Pack, so on those editions any program using the SDK (`app.exe` → `pdfbookmark.dll` → `opencv_world500.dll`) fails at start. The OCR code uses only `core`, `imgproc` and `imgcodecs`. This amends E-21, which chose prebuilt packages for all three backends.
+- **Assumptions:**
+  - Building the same sources with the same options for the modules used gives the same OCR results. This was checked, not assumed (see Verified).
+  - The import-table problem was confirmed with `dumpbin`; the failure itself has **not** been reproduced on an N edition, and the fix has not been run on one.
+  - The DLL keeps its name `opencv_world500.dll` (`opencv_world500d.dll` for Debug), so client packaging scripts need no change.
+  - OpenCV's own configure downloads `ippicv` from GitHub, checked against the hash in the OpenCV sources. This is a second download host besides the release pages.
+  - Each configuration is built on first use: about 2.5 minutes each on the development PC.
+- **Removed:** the use of the prebuilt `opencv_world500(d).dll` and, with it, the imports of Media Foundation, `GDI32`, `USER32`, `COMDLG32`, `ADVAPI32`, `OLEAUT32` and `SHLWAPI`.
+- **Verified:**
+  - `dumpbin /dependents` on the new Release and Debug DLLs: `KERNEL32`, `ole32` and the C++ runtime only. No shipped binary of the Release build imports a Media Foundation DLL.
+  - `dev` build: 26/26 suites, including `golden_parity` (the OCR parity against the PaddleOCR reference on 30 images) with the new Debug DLL.
+  - Release build: OCR of 3 scanned pages gives the same 41 regions (text, quads and confidences) as the previous build with the official DLL.
+  - Sizes: Release DLL 54 MB (was 80 MB), Debug 88 MB (was 140 MB).

@@ -40,12 +40,13 @@ All pinned in one place, `cmake/PdfbookmarkDependencies.cmake`, plus `vcpkg.json
 | --- | --- | --- | --- |
 | PDFium | 155.0.8057 | `bblanchon/pdfium-binaries`, release `chromium/8057` | Download and SHA-256 check |
 | ONNX Runtime | 1.30.0 | `microsoft/onnxruntime`, release `v1.30.0` | Download and SHA-256 check |
-| OpenCV | 5.0.0 | `opencv/opencv`, release `5.0.0` (Windows package) | Download and SHA-256 check |
+| OpenCV | 5.0.0 | `opencv/opencv`, release `5.0.0` (Windows package; only its `sources/` folder is used) | Download and SHA-256 check, then **built from source** with only `core`, `imgproc` and `imgcodecs` (see below) |
 | qpdf | 12.3.2 | vcpkg, baseline `1460b31b` (`vcpkg-configuration.json`) | Built by vcpkg |
 | OCR models | v1 | this repository's release `models-v1` | Download and SHA-256 check into `models/` |
 | Clipper2 | commit `f9c5eb6e` | vendored in `third_party/clipper2` | In the repository |
 
 - **Download location:** `.deps/` in the repository root. It is shared by all build trees and ignored by Git. Delete it to force fresh downloads.
+- **OpenCV is built from source** (E-39). The official `opencv_world500.dll` contains every module and imports Windows Media Foundation, so a program that loads it cannot start on Windows N editions without the Media Feature Pack. The configure step therefore compiles the same 5.0.0 sources with only the modules the OCR code uses, into `.deps/opencv-min-<key>`. This takes about 2.5 minutes per configuration (Debug, Release), once; the key changes when the pinned package or the build options change. The resulting `opencv_world500.dll` imports only `KERNEL32`, `ole32` and the C++ runtime. During that build OpenCV downloads Intel IPP (`ippicv`) itself, checked against its own hash, into `.deps/downloads/opencv-cache`. If the build fails, the log path is in the error message.
 - **Your own copies:** pass `-DPDFium_DIR=…`, `-DONNXRUNTIME_ROOT=…` or `-DOpenCV_DIR=…`, and that package is not downloaded.
 - **Offline models:** `-DPDFBOOKMARK_MODELS_ARCHIVE=<path to pdfbookmark-models-v1.zip>`.
 - **Changing a version:** update the URL and SHA-256 together, run the full `dev` tests including `golden_parity`, and record the change in `docs/IMPLEMENTATION_DECISIONS.md`.
@@ -111,7 +112,7 @@ cmake --install out/build/sdk-debug --component sdk --prefix out/sdk/pdfbookmark
 cd out/sdk; cmake -E tar cf ../../dist/pdfbookmark-sdk-0.4.0-win64.zip --format=zip pdfbookmark-0.4.0-win64
 ```
 
-**Deliverable: `dist/pdfbookmark-sdk-0.4.0-win64.zip`** (188 MB zipped, 428 MB unzipped; most of it is the Debug OpenCV DLL and the models). It contains:
+**Deliverable: `dist/pdfbookmark-sdk-0.4.0-win64.zip`** (188 MB zipped, 428 MB unzipped, measured for 0.3.0; most of it is the Debug OpenCV DLL and the models. From E-39 the OpenCV DLLs are smaller: Release 54 MB instead of 80 MB, Debug 88 MB instead of 140 MB). It contains:
 - `include/`: the public headers, `pdfbookmark.hpp` (C++) and `pdfbookmark.h` (C);
 - `lib/`: `pdfbookmark.lib` and `pdfbookmarkd.lib`, plus `lib/cmake/pdfbookmark`;
 - `bin/`: the Release DLLs; `bin/debug/`: the Debug dependency DLLs (`pdfbookmarkd.dll` itself is in `bin/`);
@@ -146,7 +147,7 @@ Clients use `find_package(pdfbookmark 0.1 CONFIG REQUIRED)`, link `pdfbookmark::
 | `.github/workflows/release.yml` | A pushed tag `vX.Y.Z`; also manually as a dry run | Builds both packages exactly as in §4-5, smoke-tests the CLI with a Windows-only PATH, then publishes a GitHub Release with the two ZIPs. A manual run keeps them as 1-day workflow artifacts instead. |
 
 - **Runner:** `windows-2025-vs2026`, which has Visual Studio 2026, the same as local development.
-- **Caching:** pinned downloads (`.deps/downloads`) and vcpkg binaries (qpdf) are cached. Both cache keys change when a pin changes.
+- **Caching:** pinned downloads (`.deps/downloads`), the OpenCV built from source (`.deps/opencv-min-*`) and vcpkg binaries (qpdf) are cached. Both cache keys change when a pin changes.
 - **Credentials:** the OCR models are fetched with the workflow's own `GITHUB_TOKEN` (read access to this repository's releases), so no secrets need to be configured.
 - **Minutes:** the repository is private, so runs count against the account's free Actions minutes, and Windows minutes count double. A newer push cancels an older run of the same branch.
 

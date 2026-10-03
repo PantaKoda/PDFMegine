@@ -41,10 +41,14 @@ jobs:
           if (-not $env:VCPKG_ROOT) { "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" >> $env:GITHUB_ENV }
           New-Item -ItemType Directory -Force $env:VCPKG_DEFAULT_BINARY_CACHE | Out-Null
 
+      # Also the OpenCV built from source (.deps/opencv-min-*, E-39), so the
+      # few-minute build runs only when the pins or its options change.
       - name: Cache pinned downloads (PDFium, ONNX Runtime, OpenCV, models)
         uses: actions/cache@v6
         with:
-          path: .deps/downloads
+          path: |
+            .deps/downloads
+            .deps/opencv-min-*
           key: deps-${{ hashFiles('cmake/PdfbookmarkDependencies.cmake') }}
 
       - name: Cache vcpkg binaries (qpdf)
