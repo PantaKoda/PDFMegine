@@ -140,7 +140,7 @@ This is produced by `pdfb_analyze` (its second output, only when ready), `plan_t
 
 ## 6. Metadata report (`kind: "pdfbookmark.metadata"`)
 
-This is produced by `pdfb_extract_metadata`, `extract_metadata()` + `metadata_report_json()`, and `pdfbookmark metadata --json`. It is also produced by `pdfb_analyze_book` / `analyze_book()` and `pdfbookmark analyze --metadata`. The metadata stage runs first there, so its report is unchanged. The analysis report's `acquisition.ocr_attempts_used` counts only the pages the analysis itself had to OCR; pages reused from the metadata stage count 0.
+This is produced by `pdfb_extract_metadata`, `extract_metadata()` + `metadata_report_json()`, and `pdfbookmark metadata --json`. It is also produced by `pdfb_analyze_book` / `analyze_book()` and `pdfbookmark analyze --metadata`. The metadata stage runs first there, so its report is unchanged. In that run, three members of the **analysis** report's `acquisition` differ from a separate `analyze()`: `ocr_attempts_used` counts only the pages the analysis itself had to OCR (pages reused from the metadata stage count 0); `ocr_budget` is the analysis stage's effective allowance (the run-wide cap minus what the metadata stage used); and in `configurations[]`, a reused page keeps the metadata stage's configuration string, including that stage's `ocr_budget`. See `docs/API.md`, "Contents and metadata together".
 
 | Member | Meaning |
 | --- | --- |

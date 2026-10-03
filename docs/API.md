@@ -163,7 +163,15 @@ auto book = pdfbookmark::analyze_book(pdf, analysis_options, metadata_options, c
 - **Use this when you need both.** The PDF is opened once, and the pages read for the metadata are reused by the TOC analysis instead of being read and OCR'd again. On a scanned book this halves the work: for 4 scanned pages, 61 s becomes 31 s.
 - **Metadata first, and early.** The metadata stage runs first, and `on_metadata` receives its report before the (much longer) TOC analysis starts, so a client can show the title within about a minute on a scanned book instead of after the whole analysis.
 - **Metadata survives a failed analysis.** An analysis error is returned in `analysis_error`, and the metadata is still returned. Only errors in opening the file or in the metadata stage fail the whole call.
-- **Same results:** with enough OCR budget, results equal the two separate calls. Only the analysis report's `ocr_attempts_used` is lower.
+- **Same results:** with enough OCR budget, the findings (candidates, entries, mappings, plan, metadata fields) equal the two separate calls. Three members of the **analysis** report's `acquisition` differ, because the analysis reuses pages the metadata stage already read:
+
+  | `acquisition` member | Separate `analyze()` | In `analyze_book()` | Example (4 scanned pages, default budgets) |
+  | --- | --- | --- | --- |
+  | `ocr_attempts_used` | every page the analysis OCR'd | only pages the analysis OCR'd itself; reused pages count 0 | 4 → 0 |
+  | `ocr_budget` | `limits.ocr_budget` | the analysis stage's effective allowance: the run-wide cap minus what the metadata stage used | 64 → 60 |
+  | `configurations[]` | the analysis's own configuration string | a reused page keeps the configuration string of the stage that read it, including that stage's `ocr_budget` | `…;ocr_budget=64` → `…;ocr_budget=16` |
+
+  So do not compare `configurations` or `ocr_budget` with the options you passed. A page's `configuration` index says which string applies to it: pages reused from the metadata stage point at the metadata stage's string, and pages the analysis read itself point at its own. The metadata report is the same as from `extract_metadata()`.
 - **Settings:** `models` and `ocr_threads` come from the analysis options. Pages are reused only when both option sets use the same `mode` and `raster` settings, which the defaults do. With the defaults the metadata pages (at most 30) lie inside the analysis's first 40-page batch, so every page is OCR'd once.
 - **OCR budget:** `analysis.limits.ocr_budget` caps OCR for the whole run. The metadata stage may use at most `metadata.ocr_budget` of it, and the analysis gets what is left. Reused pages cost nothing. Each report's `ocr_budget` is its stage's effective allowance. In the C API and CLI, the single `ocr_budget` / `--ocr-budget` is that run-wide cap.
 - **Progress** reports stage `"metadata"` first, then the analysis stages. `pages_acquired` counts pages of the current stage, so it restarts when the analysis begins.
