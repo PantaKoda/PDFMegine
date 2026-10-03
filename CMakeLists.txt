@@ -34,7 +34,7 @@ if(PDFBOOKMARK_BUILD_LIBRARY)
 endif()
 
 # Single source of the pdfbookmark version (library, CLI, packages).
-set(PDFBOOKMARK_VERSION "0.3.0" CACHE STRING "pdfbookmark version (MAJOR.MINOR.PATCH)")
+set(PDFBOOKMARK_VERSION "0.4.0" CACHE STRING "pdfbookmark version (MAJOR.MINOR.PATCH)")
 if(NOT PDFBOOKMARK_VERSION MATCHES "^([0-9]+)\\.([0-9]+)\\.([0-9]+)$")
   message(FATAL_ERROR "PDFBOOKMARK_VERSION must be MAJOR.MINOR.PATCH")
 endif()
