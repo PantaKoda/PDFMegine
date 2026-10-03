@@ -407,7 +407,18 @@ S6 decisions are recorded with its contract in `docs/handoffs/S6_HANDOFF.md`.
 - **Verified:** `dev` build; `metadata_pure` (new cases), `engine_metadata` and `cli_metadata` pass. The three real books in `tests/books/` list the same ISBNs and labels as in E-35 (embedded mode).
 
 
-### E-36 The OCR models' licence ships with every package (issue #6, 3 Oct 2026)
+### E-37 Version 0.4.0 for the `MetadataResult` change (3 Oct 2026)
+
+- **Change:** `PDFBOOKMARK_VERSION` is 0.4.0 in `CMakeLists.txt` and `vcpkg.json`; the package names in `docs/BUILDING.md` follow. `PDFB_C_API_VERSION` stays 1.
+- **Why:** E-35 added `isbns` to the exported struct `metadata::MetadataResult`, which changes the C++ layout. With the version still 0.3.0, a client built against the released 0.3.0 headers could not tell the new DLL from the old one.
+- **Assumptions:**
+  - A minor bump is the signal for a C++ layout change while the major version is 0. `SameMajorVersion` still lets `find_package(pdfbookmark 0.3)` accept 0.4.0, so C++ clients must rebuild against the 0.4.0 headers; the C API and Python are unaffected (they pass JSON through).
+  - `PDFBOOKMARK_VERSION` is a cache variable: an existing build folder keeps 0.3.0 until it is reconfigured with `-DPDFBOOKMARK_VERSION=0.4.0` or a fresh cache.
+  - The package sizes quoted in `docs/BUILDING.md` are those of 0.3.0 and were not re-measured. No 0.4.0 package or tag has been made.
+- **Verified:** not built; version strings only.
+
+
+### E-38 The OCR models' licence ships with every package (issue #6, 3 Oct 2026)
 
 - **Change:**
   - The PaddleOCR `LICENSE` (Apache-2.0) is now in the repository as `packaging/licenses/PaddleOCR-PP-OCR-models.txt`. The SDK installs it to `share/doc/pdfbookmark/licenses/`, and the end-user package to `licenses/`.

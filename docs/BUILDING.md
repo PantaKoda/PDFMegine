@@ -59,10 +59,10 @@ cmake --preset release
 cmake --build --preset release --target pdfbookmarkCli
 cmake --install out/build/release --component app --prefix dist/pdfbookmark
 cpack --config out/build/release/CPackConfig.cmake
-copy out\build\release\package\pdfbookmark-0.3.0-win64.zip dist\
+copy out\build\release\package\pdfbookmark-0.4.0-win64.zip dist\
 ```
 
-**Deliverable: `dist/pdfbookmark-0.3.0-win64.zip`** (141 MB, one top-level folder `pdfbookmark-0.3.0-win64/`). `dist/pdfbookmark/` is the same content unzipped. The version comes from the CMake cache variable `PDFBOOKMARK_VERSION` (default `0.3.0`) and is printed by `pdfbookmark --version`. The user guide inside the package is `packaging/README.txt`.
+**Deliverable: `dist/pdfbookmark-0.4.0-win64.zip`** (141 MB, one top-level folder `pdfbookmark-0.4.0-win64/`). `dist/pdfbookmark/` is the same content unzipped. The version comes from the CMake cache variable `PDFBOOKMARK_VERSION` (default `0.4.0`) and is printed by `pdfbookmark --version`. The user guide inside the package is `packaging/README.txt`.
 
 ### Installing as a command (users)
 
@@ -88,7 +88,7 @@ Extract the ZIP and double-click `Install.cmd`; no administrator rights are need
 | `models/det/inference.onnx`, `models/rec/inference.onnx`, `models/rec/charset.txt` | The only model files the OCR code reads (the `.yml` files are not read) |
 | `Add bookmarks.cmd`, `Add bookmarks (allow partial).cmd`, `README.txt` | Drag-and-drop use and the non-developer guide (sources in `packaging/`) |
 | `Install.cmd`, `install.ps1`, `Uninstall.cmd`, `uninstall.ps1` | Per-user install onto `PATH` and removal |
-| `licenses/` | PDFium, qpdf, zlib, libjpeg-turbo, ONNX Runtime (plus third-party notices), OpenCV, and PaddleOCR (PP-OCR models). The same eight notices go into the SDK. The models' licence is `packaging/licenses/PaddleOCR-PP-OCR-models.txt` in this repository; the others come from the dependency packages. A missing notice stops the configure (`pdfbookmark_install_notices`, E-36) |
+| `licenses/` | PDFium, qpdf, zlib, libjpeg-turbo, ONNX Runtime (plus third-party notices), OpenCV, and PaddleOCR (PP-OCR models). The same eight notices go into the SDK. The models' licence is `packaging/licenses/PaddleOCR-PP-OCR-models.txt` in this repository; the others come from the dependency packages. A missing notice stops the configure (`pdfbookmark_install_notices`, E-38) |
 
 **Not shipped:** tests, fixtures and `tests/books/`; the OCR tools and Python tools; headers, `.lib` and CMake files; test hooks (compiled out); the model `.yml` files, `corpus/` and `golden/`; and the unused runtime DLLs `fmt`, `turbojpeg`, `onnxruntime_providers_shared`, `msvcp140_2`, `msvcp140_atomic_wait` and `msvcp140_codecvt_ids`.
 
@@ -106,12 +106,12 @@ The CLI is a client of the shared library `pdfbookmark.dll`. The SDK is a CMake 
 ```powershell
 cmake --preset release;   cmake --build --preset release --target pdfbookmark
 cmake --preset sdk-debug; cmake --build --preset sdk-debug
-cmake --install out/build/release   --component sdk --prefix out/sdk/pdfbookmark-0.3.0-win64
-cmake --install out/build/sdk-debug --component sdk --prefix out/sdk/pdfbookmark-0.3.0-win64
-cd out/sdk; cmake -E tar cf ../../dist/pdfbookmark-sdk-0.3.0-win64.zip --format=zip pdfbookmark-0.3.0-win64
+cmake --install out/build/release   --component sdk --prefix out/sdk/pdfbookmark-0.4.0-win64
+cmake --install out/build/sdk-debug --component sdk --prefix out/sdk/pdfbookmark-0.4.0-win64
+cd out/sdk; cmake -E tar cf ../../dist/pdfbookmark-sdk-0.4.0-win64.zip --format=zip pdfbookmark-0.4.0-win64
 ```
 
-**Deliverable: `dist/pdfbookmark-sdk-0.3.0-win64.zip`** (188 MB zipped, 428 MB unzipped; most of it is the Debug OpenCV DLL and the models). It contains:
+**Deliverable: `dist/pdfbookmark-sdk-0.4.0-win64.zip`** (188 MB zipped, 428 MB unzipped; most of it is the Debug OpenCV DLL and the models). It contains:
 - `include/`: the public headers, `pdfbookmark.hpp` (C++) and `pdfbookmark.h` (C);
 - `lib/`: `pdfbookmark.lib` and `pdfbookmarkd.lib`, plus `lib/cmake/pdfbookmark`;
 - `bin/`: the Release DLLs; `bin/debug/`: the Debug dependency DLLs (`pdfbookmarkd.dll` itself is in `bin/`);
@@ -156,8 +156,8 @@ Clients use `find_package(pdfbookmark 0.1 CONFIG REQUIRED)`, link `pdfbookmark::
 3. Push a tag with the same number:
 
 ```powershell
-git tag v0.3.0
-git push origin v0.3.0
+git tag v0.4.0
+git push origin v0.4.0
 ```
 
 The workflow refuses a tag that doesn't match `PDFBOOKMARK_VERSION`.
