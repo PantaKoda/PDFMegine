@@ -213,6 +213,33 @@ int main() {
             }),
             "an ISBN with a wrong check digit is reported, not listed");
 
+    // A misread ISBN-13 is not rescued as an ISBN-10, a qualifier in front
+    // of the next ISBN is not this ISBN's label, and a ten-digit number
+    // below an ISBN line is not an ISBN.
+    const auto strict_page = page(4, {
+        {"ISBN 978-0-306-40615-2", 60, 8},  // Tail "0-306-40615-2" is a valid ISBN-10.
+        {"Hardback ISBN 978-1-4398-1192-4 Paperback ISBN 978-1-4398-1193-1", 80, 8},
+        {"9 8 7 6 5 4 3 2 1 0", 95, 8},     // Printer's key: passes the ISBN-10 check.
+        {"ISBN 0-19-853453-1 (ISBN-13 978-0-19-853453-2) ISBN 978-3-642-11111-3", 110, 8}});
+    const auto strict = extract({cover, title, strict_page});
+    require(static_cast<bool>(strict), "extract with the strict ISBN page succeeds");
+    const auto& s_isbns = strict.value().isbns;
+    require(s_isbns.size() == 3 && s_isbns[0].isbn13 == "9781439811924" &&
+                s_isbns[0].format == IsbnFormat::Hardcover &&
+                s_isbns[1].isbn13 == "9781439811931" &&
+                s_isbns[1].format == IsbnFormat::Paperback &&
+                s_isbns[2].isbn13 == "9780198534532" && !s_isbns[2].label,
+            "misread ISBN-13 and printer's key are not listed; each ISBN keeps its "
+            "own qualifier; a parenthesis holding the next ISBN is not a label");
+    const auto& s_diag = strict.value().diagnostics;
+    const auto reported = [&](const char* number) {
+        return std::any_of(s_diag.begin(), s_diag.end(), [&](const std::string& d) {
+            return d.find(number) != std::string::npos;
+        });
+    };
+    require(reported("978-0-306-40615-2") && reported("978-3-642-11111-3"),
+            "a failing ISBN is reported even when its line also has a valid one");
+
     // A series page lists other books with their editors; the title
     // statement ", Name and Name" confirms this book's authors.
     const auto series = page(1, {

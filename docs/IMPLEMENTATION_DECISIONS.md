@@ -387,3 +387,21 @@ S6 decisions are recorded with its contract in `docs/handoffs/S6_HANDOFF.md`.
   - The JSON stays `schema_version` 1: the change adds a member and changes none. A client that rejects unknown members of this report would need updating; the reports are outputs, and strict member checks apply only to plan input.
   - C++ clients must rebuild, because `MetadataResult` gained a member. `PDFBOOKMARK_VERSION` (0.3.0) and `PDFB_C_API_VERSION` (1) are unchanged here; the version bump belongs to the next release commit.
 - **Verified:** root `dev` build, 26/26 suites (`metadata_pure`, `engine_metadata` and `cli_metadata` cover the list). Real books (3 Oct 2026, read-only, `tests/books/`): *Computational Physics* (Wiley, 4th ed.) lists 3 ISBNs from its copyright page (Print, ePDF, ePub); *Numerical Recipes* (Cambridge, 3rd ed.) lists 2 (hardback, eBook), each printed as ISBN-13 and ISBN-10 and merged into one entry. Both match the printed pages, and the input hashes are unchanged. Both files have embedded text (0 OCR attempts). *Black Holes, White Dwarfs and Neutron Stars* (`shapiro1983.pdf`, a scan with an embedded OCR layer) lists its one ISBN, 9780471873167, both from the embedded layer (printed there with stray spaces, "978-0-47 1-873 16-7") and from our own OCR (`--mode ocr --max-pages 4`, 4 OCR attempts); the ISBN-10 line is merged into the same entry.
+
+
+### E-36 ISBN list: review fixes for PR 8 (3 Oct 2026)
+
+- **Change** (`src/metadata/metadata.cpp`, `tests/metadata/metadata_test.cpp`):
+  - A 978/979 number that fails the ISBN-13 check is skipped whole. Its last ten digits are no longer read as an ISBN-10.
+  - On a line below an ISBN statement that has no ISBN keyword, only an ISBN-13 is listed.
+  - A failing number on an ISBN line is reported in `diagnostics` even when the same line also has a valid ISBN (the first failing number per line).
+  - A bare format word after an ISBN is not its label when that ISBN has its own qualifier in front and the word is followed by the ISBN keyword ("Hardback ISBN … Paperback ISBN …").
+  - A parenthesis after an ISBN is a label only when it closes before the next ISBN on the line.
+  - Repeat evidence is compared by line text as well as page and region, because one region can hold several lines.
+  - The year rules skip every line the ISBN list reads from (`isbn_line`), not only lines that contain "isbn".
+- **Why:** code review of PR 8 found that an OCR-misread ISBN-13 could be stored as a different ISBN, and that unrelated ten-digit numbers (a printer's key "9 8 7 6 5 4 3 2 1 0") passed the ISBN-10 check on continuation lines.
+- **Assumptions:**
+  - An ISBN-10 printed without the keyword on a continuation line is rare; it is no longer listed. Any ten-digit number passes the ISBN-10 check 1 time in 11, an ISBN-13 needs the 978/979 prefix as well.
+  - The policy identity stays `s6-document-metadata-v2`, because v2 has not been released.
+  - The C++ ABI change of `MetadataResult` is not addressed here; the version bump stays with the next release commit (E-35).
+- **Verified:** `dev` build; `metadata_pure` (new cases), `engine_metadata` and `cli_metadata` pass. The three real books in `tests/books/` list the same ISBNs and labels as in E-35 (embedded mode).

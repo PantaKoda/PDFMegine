@@ -801,6 +801,8 @@ struct YearHit {
     Evidence evidence;
 };
 
+bool isbn_line(const Line& line);  // Defined with the ISBN rules below.
+
 std::vector<int> years_in(const std::string& text, const MetadataOptions& options) {
     static const std::regex pattern(R"((^|[^0-9])(\d{4})(?![0-9]))");
     std::vector<int> out;
@@ -819,7 +821,7 @@ void resolve_years(const std::vector<Page>& pages, const MetadataOptions& option
         if (page.role != PageRole::Copyright && !title_page) continue;
         for (const auto& line : page.lines) {
             const std::string& l = line.lower;
-            if (contains(l, "isbn")) continue;  // ISBN digits are not years.
+            if (isbn_line(line)) continue;  // ISBN digits are not years.
             const auto ys = years_in(l, options);
             if (ys.empty()) continue;
             std::optional<std::uint32_t> edition;
@@ -1015,6 +1017,8 @@ std::vector<IsbnHit> isbn_hits(const std::string& s, std::string* rejected) {
             continue;
         }
         bool found = false;
+        std::string failed;    // ISBN-shaped number here whose check fails.
+        std::size_t next = pos + 1;
         for (const std::size_t count : {std::size_t{13}, std::size_t{10}}) {
             const auto m = read_isbn(s, pos, count);
             if (!m) continue;
@@ -1027,11 +1031,27 @@ std::vector<IsbnHit> isbn_hits(const std::string& s, std::string* rejected) {
                 found = true;
                 break;
             }
-            if (rejected && rejected->empty()) *rejected = printed;
+            if (failed.empty()) failed = printed;
+            // A failed ISBN-13 is skipped whole, so that its last ten digits
+            // are not read as an ISBN-10.
+            if (count == 13 && (m->first.rfind("978", 0) == 0 || m->first.rfind("979", 0) == 0)) {
+                next = m->second;
+                break;
+            }
         }
-        if (!found) ++pos;
+        if (found) continue;
+        if (rejected && rejected->empty() && !failed.empty()) *rejected = failed;
+        pos = next;
     }
     return hits;
+}
+
+// A line the ISBN list reads its numbers from: years are not read from it.
+bool isbn_line(const Line& line) {
+    if (isbn_keyword(line.lower)) return true;
+    for (const auto& hit : isbn_hits(ascii_separators(line.text), nullptr))
+        if (hit.form == IsbnForm::Isbn13) return true;
+    return false;
 }
 
 IsbnFormat isbn_format(const std::string& text) {
@@ -1091,14 +1111,23 @@ void collect_isbns(const std::vector<Page>& pages, MetadataResult& out) {
             if (!keyword && !previous) continue;
             const std::string s = ascii_separators(line.text);
             std::string rejected;
-            const auto hits = isbn_hits(s, keyword ? &rejected : nullptr);
+            auto hits = isbn_hits(s, keyword ? &rejected : nullptr);
+            // Without the keyword only an ISBN-13 is accepted: any ten-digit
+            // number (a printer's key, a phone number) can pass the ISBN-10 check.
+            if (!keyword)
+                hits.erase(std::remove_if(hits.begin(), hits.end(),
+                                          [](const IsbnHit& h) { return h.form == IsbnForm::Isbn10; }),
+                           hits.end());
             previous = keyword || !hits.empty();
-            if (hits.empty() && !rejected.empty())
+            if (!rejected.empty())
                 out.diagnostics.push_back(
                     "Page " + std::to_string(page.acquisition->page_index) + ": \"" + rejected +
                     "\" on an ISBN line fails the ISBN check digit and is not listed");
             std::size_t consumed = 0;  // End of the previous ISBN and its label.
-            for (const auto& hit : hits) {
+            for (std::size_t h = 0; h < hits.size(); ++h) {
+                const IsbnHit& hit = hits[h];
+                // A label ends before the next ISBN on the line.
+                const std::size_t limit = h + 1 < hits.size() ? hits[h + 1].begin : s.size();
                 IsbnFormat format = IsbnFormat::Unknown;
                 std::optional<std::string> label;
                 // Label after the number: "(hardback : alk. paper)" or a bare "pbk".
@@ -1107,7 +1136,7 @@ void collect_isbns(const std::vector<Page>& pages, MetadataResult& out) {
                 std::size_t next_consumed = hit.end;
                 if (after < s.size() && s[after] == '(') {
                     const auto close = s.find(')', after);
-                    if (close != std::string::npos) {
+                    if (close != std::string::npos && close < limit) {
                         const std::string inner = trim_label(s.substr(after + 1, close - after - 1));
                         if (!inner.empty()) label = inner;
                         format = isbn_format(inner);
@@ -1120,7 +1149,12 @@ void collect_isbns(const std::vector<Page>& pages, MetadataResult& out) {
                             s[word_end] == '-'))
                         ++word_end;
                     const std::string word = s.substr(after, word_end - after);
-                    if (isbn_format(word) != IsbnFormat::Unknown) {
+                    // "Hardback ISBN 978-... Paperback ISBN 978-...": this ISBN has
+                    // its qualifier in front, so the word qualifies the next ISBN.
+                    const bool next_prefix =
+                        isbn_keyword(lower(s.substr(after, limit - after))) &&
+                        isbn_format(s.substr(consumed, hit.begin - consumed)) != IsbnFormat::Unknown;
+                    if (isbn_format(word) != IsbnFormat::Unknown && !next_prefix) {
                         label = word;
                         format = isbn_format(word);
                         next_consumed = word_end;
@@ -1166,8 +1200,10 @@ void collect_isbns(const std::vector<Page>& pages, MetadataResult& out) {
                 } else {
                     IsbnValue& value = out.isbns[known->second];
                     const auto& last = value.evidence.back().source;
+                    // One region can hold several lines, so the text is compared too.
                     if (last.page_index != ev.source.page_index ||
-                        last.region_id != ev.source.region_id)
+                        last.region_id != ev.source.region_id ||
+                        value.evidence.back().text != ev.text)
                         value.evidence.push_back(std::move(ev));
                     if (value.format == IsbnFormat::Unknown) value.format = format;
                     if (!value.label) value.label = label;
