@@ -88,7 +88,7 @@ Extract the ZIP and double-click `Install.cmd`; no administrator rights are need
 | `models/det/inference.onnx`, `models/rec/inference.onnx`, `models/rec/charset.txt` | The only model files the OCR code reads (the `.yml` files are not read) |
 | `Add bookmarks.cmd`, `Add bookmarks (allow partial).cmd`, `README.txt` | Drag-and-drop use and the non-developer guide (sources in `packaging/`) |
 | `Install.cmd`, `install.ps1`, `Uninstall.cmd`, `uninstall.ps1` | Per-user install onto `PATH` and removal |
-| `licenses/` | PDFium, qpdf, zlib, libjpeg-turbo, ONNX Runtime (plus third-party notices), OpenCV, and PaddleOCR (PP-OCR models) |
+| `licenses/` | PDFium, qpdf, zlib, libjpeg-turbo, ONNX Runtime (plus third-party notices), OpenCV, and PaddleOCR (PP-OCR models). The same eight notices go into the SDK. The models' licence is `packaging/licenses/PaddleOCR-PP-OCR-models.txt` in this repository; the others come from the dependency packages. A missing notice stops the configure (`pdfbookmark_install_notices`, E-36) |
 
 **Not shipped:** tests, fixtures and `tests/books/`; the OCR tools and Python tools; headers, `.lib` and CMake files; test hooks (compiled out); the model `.yml` files, `corpus/` and `golden/`; and the unused runtime DLLs `fmt`, `turbojpeg`, `onnxruntime_providers_shared`, `msvcp140_2`, `msvcp140_atomic_wait` and `msvcp140_codecvt_ids`.
 
@@ -116,7 +116,7 @@ cd out/sdk; cmake -E tar cf ../../dist/pdfbookmark-sdk-0.3.0-win64.zip --format=
 - `lib/`: `pdfbookmark.lib` and `pdfbookmarkd.lib`, plus `lib/cmake/pdfbookmark`;
 - `bin/`: the Release DLLs; `bin/debug/`: the Debug dependency DLLs (`pdfbookmarkd.dll` itself is in `bin/`);
 - `share/pdfbookmark/models/`;
-- `share/doc/pdfbookmark/`: `API.md`, `JSON_FORMATS.md`, `AGENTS.md` (from `docs/AGENTS_SDK.md`), `examples/basic` (C++), `examples/qt-quick` (Qt 6 QML), `examples/python` (a ctypes wrapper over the C API) and licences.
+- `share/doc/pdfbookmark/`: `API.md`, `JSON_FORMATS.md`, `AGENTS.md` (from `docs/AGENTS_SDK.md`), `examples/basic` (C++), `examples/qt-quick` (Qt 6 QML), `examples/python` (a ctypes wrapper over the C API) and `licenses/` (the eight third-party notices, including `PaddleOCR-PP-OCR-models.txt` for the models).
 
 The install fails if any dependency other than an optional Windows component is unresolved. `onnxruntime.dll` is always installed from the pinned ONNX Runtime, because Windows 11 has an unrelated `System32\onnxruntime.dll` that the dependency scan would otherwise pick up and then filter out as a system file.
 
