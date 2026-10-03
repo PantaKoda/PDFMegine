@@ -212,24 +212,8 @@ install(FILES "${_root}/docs/AGENTS_SDK.md" RENAME AGENTS.md
 install(DIRECTORY "${_root}/examples/basic" "${_root}/examples/python" "${_root}/examples/qt-quick"
   DESTINATION "${CMAKE_INSTALL_DATADIR}/doc/pdfbookmark/examples" COMPONENT ${_sdk}
   PATTERN "__pycache__" EXCLUDE)
-get_filename_component(_vcpkg_share "${qpdf_DIR}/.." ABSOLUTE)
-foreach(_notice
-    "${PDFium_DIR}/LICENSE|PDFium.txt"
-    "${_vcpkg_share}/qpdf/copyright|qpdf.txt"
-    "${_vcpkg_share}/zlib/copyright|zlib.txt"
-    "${_vcpkg_share}/libjpeg-turbo/copyright|libjpeg-turbo.txt"
-    "${ONNXRUNTIME_ROOT}/LICENSE|ONNX-Runtime.txt"
-    "${ONNXRUNTIME_ROOT}/ThirdPartyNotices.txt|ONNX-Runtime-third-party-notices.txt"
-    "${OpenCV_DIR}/LICENSE|OpenCV.txt"
-    "${_root}/PaddleOCR/LICENSE|PaddleOCR-PP-OCR-models.txt")
-  string(REPLACE "|" ";" _pair "${_notice}")
-  list(GET _pair 0 _from)
-  list(GET _pair 1 _to)
-  if(EXISTS "${_from}")
-    install(FILES "${_from}" DESTINATION "${CMAKE_INSTALL_DATADIR}/doc/pdfbookmark/licenses"
-      RENAME "${_to}" COMPONENT ${_sdk})
-  endif()
-endforeach()
+pdfbookmark_install_notices("${CMAKE_INSTALL_DATADIR}/doc/pdfbookmark/licenses"
+  COMPONENT ${_sdk})
 
 install(EXPORT pdfbookmarkTargets NAMESPACE pdfbookmark::
   FILE pdfbookmarkTargets.cmake DESTINATION "${_cmake_dir}" COMPONENT ${_sdk})

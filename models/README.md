@@ -12,4 +12,6 @@ SHA-256 (`cmake/PdfbookmarkDependencies.cmake`). Offline alternative:
     rec/inference.yml    recognizer parameter profile
     rec/charset.txt      recognition character set (18,708 tokens)
 
-The models are PaddleOCR PP-OCR models (Apache-2.0).
+The models are PaddleOCR PP-OCR models (Apache-2.0). Their licence is
+`packaging/licenses/PaddleOCR-PP-OCR-models.txt`; every package that ships
+the models installs it as `licenses/PaddleOCR-PP-OCR-models.txt`.

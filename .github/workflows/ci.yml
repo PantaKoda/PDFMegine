@@ -67,6 +67,14 @@ jobs:
       - name: Install the SDK from this build
         run: cmake --install out/build/dev --component sdk --prefix out/sdk
 
+      # The models are Apache-2.0: the SDK must carry their licence (issue #6).
+      - name: The SDK ships the OCR models' licence
+        shell: pwsh
+        run: |
+          if (-not (Test-Path out/sdk/share/doc/pdfbookmark/licenses/PaddleOCR-PP-OCR-models.txt)) {
+            throw "SDK install lacks licenses/PaddleOCR-PP-OCR-models.txt"
+          }
+
       - name: Qt for the Qt Quick example
         uses: jurplel/install-qt-action@a9c63c7c123f3069cff414e7e482d95dfa9d8125  # v4.4.1
         with:
