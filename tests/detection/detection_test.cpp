@@ -61,6 +61,40 @@ PageAcquisition page(PageIndex index, double right = 550,
     return value;
 }
 
+// A contents page laid out in three column regions per row (section number,
+// title, page number) with unnumbered chapter lines between, as in a scanned
+// reprint's text layer (issue #13). `head` is an optional first line.
+PageAcquisition columns_page(PageIndex index, const std::string& head,
+                             int entries = 18, int chapters = 6,
+                             double ref_left = 530) {
+    PageAcquisition value;
+    value.page_index = index;
+    value.outcome = Outcome::Ok;
+    PageContent content;
+    content.page_index = index;
+    content.revision = static_cast<std::uint64_t>(index + 1);
+    content.geometry.width_points = 600;
+    content.geometry.height_points = 800;
+    std::uint32_t id = 0;
+    if (!head.empty()) content.regions.push_back(region(id++, head, 40, 160, 40));
+    double top = 100;
+    for (int i = 0, chapter = 0; i < entries; ++i) {
+        if (chapter < chapters && i % 3 == 0) {
+            content.regions.push_back(region(id++, "Chapter heading without a number",
+                                             40, 330, top));
+            top += 20;
+            ++chapter;
+        }
+        content.regions.push_back(region(id++, "8." + std::to_string(i + 1), 60, 76, top));
+        content.regions.push_back(region(id++, "Section title", 86, 250, top));
+        content.regions.push_back(
+            region(id++, std::to_string(200 + 3 * i), ref_left, ref_left + 18, top));
+        top += 20;
+    }
+    value.selected = std::move(content);
+    return value;
+}
+
 PageAcquisition blank(PageIndex index) {
     PageAcquisition value;
     value.page_index = index;
@@ -92,7 +126,7 @@ int main() {
             first.end == BoundaryState::MayContinue,
             "batch edges do not imply TOC closure");
     require(first.score > 7 && !first.reasons.empty() &&
-            single.value().policy_id == "s2-toc-detection-v2",
+            single.value().policy_id == "s2-toc-detection-v3",
             "versioned, inspectable ranking evidence");
     const auto no_heading = detect({page(4, 550, false)});
     require(no_heading && no_heading.value().candidates.size() == 1,
@@ -213,6 +247,50 @@ int main() {
     require(blocked_result && blocked_result.value().candidates.size() == 1 &&
             blocked_result.value().candidates[0].pages[0].row_evidence.size() == 6,
             "an intervening left-column number blocks cross-column pairing");
+
+    // Issue #13: a five-page contents with the "Contents" heading on its
+    // first page only, "xiv Contents" / "Contents xv" running heads, and
+    // rows split into number, title and page regions.
+    const auto five = detect({columns_page(10, "Contents"), columns_page(11, "xiv Contents"),
+                              columns_page(12, ""), columns_page(13, "xvi Contents"),
+                              columns_page(14, "Contents xvii")});
+    require(five && five.value().candidates.size() == 1 &&
+                five.value().candidates[0].pages.size() == 5 &&
+                five.value().pages[2].status == PageStatus::Candidate,
+            "three-region rows count once per visual line; one five-page candidate");
+    const auto& head_reasons = five.value().pages[1].reasons;
+    require(std::find(head_reasons.begin(), head_reasons.end(),
+                      "Contents running head (continued page)") != head_reasons.end() &&
+                std::find(head_reasons.begin(), head_reasons.end(),
+                          "Contents heading cue") == head_reasons.end(),
+            "a 'xiv Contents' running head marks a continued page, not a new heading");
+
+    // One sparse page between two TOC pages, with aligned rows in the same
+    // reference column, continues the TOC.
+    const auto sparse_page = [&](PageIndex index, double ref_left) {
+        auto value = columns_page(index, "", 3, 0, ref_left);
+        auto id = static_cast<std::uint32_t>(value.selected->regions.size());
+        for (int k = 0; k < 10; ++k)
+            value.selected->regions.push_back(
+                region(id++, "A paragraph of plain running text", 40, 500, 200.0 + 20 * k));
+        return value;
+    };
+    const auto bridged = detect({columns_page(30, "Contents"), sparse_page(31, 530),
+                                 columns_page(32, "")});
+    require(bridged && bridged.value().candidates.size() == 1 &&
+                bridged.value().candidates[0].pages.size() == 3 &&
+                bridged.value().pages[1].status == PageStatus::Rejected &&
+                std::any_of(bridged.value().candidates[0].reasons.begin(),
+                            bridged.value().candidates[0].reasons.end(),
+                            [](const std::string& r) {
+                                return r.find("included between compatible TOC pages") !=
+                                       std::string::npos;
+                            }),
+            "a sparse middle page with rows in the same column joins the candidate");
+    const auto unbridged = detect({columns_page(30, "Contents"), sparse_page(31, 300),
+                                   columns_page(32, "")});
+    require(unbridged && unbridged.value().candidates.size() == 2,
+            "a middle page whose numbers sit in another column is not bridged");
 
     const auto boundary_input = detect({page(39, 550, true)});
     require(boundary_input &&

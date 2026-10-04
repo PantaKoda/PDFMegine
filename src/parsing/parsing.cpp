@@ -15,7 +15,7 @@
 namespace pdfbookmark::parsing {
 namespace {
 
-constexpr const char* kPolicyId = "s3-toc-parsing-v2";
+constexpr const char* kPolicyId = "s3-toc-parsing-v3";
 
 bool space(unsigned char c) {
     return c == ' ' || c == '\t' || c == '\r' ||
@@ -149,6 +149,73 @@ std::optional<PrintedReference> reference(const std::string& literal) {
     return std::nullopt;
 }
 
+// Text-layer OCR artifacts inside a number ("21 1", "I I9", "33 I"): digits
+// with a stray space, or a letter I/l for the digit 1. Returns the digits
+// when `literal` is such a number, nothing for a clean or other token. A
+// spaced form gives at most 3 digits, so two real numbers ("12 15") are
+// never joined.
+std::optional<std::string> ocr_number(const std::string& literal) {
+    const std::string value = trim(literal);
+    std::string digits;
+    std::size_t spaces = 0, letters = 0, digit_count = 0;
+    for (std::size_t i = 0; i < value.size(); ++i) {
+        const char c = value[i];
+        if (digit(static_cast<unsigned char>(c))) { digits += c; ++digit_count; }
+        else if (c == 'I' || c == 'l') { digits += '1'; ++letters; }
+        else if (c == ' ' && i > 0 && value[i - 1] != ' ') ++spaces;
+        else return std::nullopt;
+    }
+    if (digit_count == 0 || (spaces == 0 && letters == 0) || spaces > 2 ||
+        digits.size() > (spaces ? 3u : 4u))
+        return std::nullopt;
+    return digits;
+}
+
+// A leading section number with the same artifacts: "2. I" -> "2.1",
+// "8. I3" -> "8.13", "8.1 1" -> "8.11" (the last only when `alone`, i.e. the
+// number is its own region, since "2.1 1 Title" could be read either way).
+// Returns the corrected number and the length it replaces, or nothing.
+std::optional<std::pair<std::string, std::size_t>> ocr_section_number(
+    const std::string& text, bool alone) {
+    // A leading "I" or "l" for 1, possibly split off: "I8.6", "I 8.6".
+    std::size_t start = 0;
+    std::string fixed;
+    bool repaired = false;
+    if (!text.empty() && (text[0] == 'I' || text[0] == 'l')) {
+        start = text.size() > 1 && text[1] == ' ' ? 2 : 1;
+        if (start >= text.size() || !digit(static_cast<unsigned char>(text[start])))
+            return std::nullopt;
+        fixed = "1";
+        repaired = true;
+    }
+    std::size_t i = start;
+    while (i < text.size() && digit(static_cast<unsigned char>(text[i]))) ++i;
+    if (i == start || i - start + fixed.size() > 3 || i >= text.size() ||
+        text[i] != '.')
+        return std::nullopt;
+    fixed += text.substr(start, i + 1 - start);
+    std::size_t j = i + 1;
+    if (j < text.size() && text[j] == ' ') { ++j; repaired = true; }
+    std::size_t part = 0;
+    while (j < text.size() && part < 2) {
+        const char c = text[j];
+        if (digit(static_cast<unsigned char>(c))) fixed += c;
+        else if (c == 'I' || c == 'l') { fixed += '1'; repaired = true; }
+        else if (c == ' ' && alone && part == 1 && j + 1 < text.size() &&
+                 digit(static_cast<unsigned char>(text[j + 1])) &&
+                 (j + 2 == text.size() || text[j + 2] == ' ')) {
+            repaired = true;  // "8.1 1": one stray space inside the number.
+            ++j;
+            continue;
+        } else break;
+        ++part;
+        ++j;
+    }
+    if (part == 0 || !repaired) return std::nullopt;
+    if (j < text.size() && text[j] != ' ') return std::nullopt;  // "1.2 3D".
+    return std::make_pair(fixed, j);
+}
+
 bool leader_near_end(const std::string& prefix) {
     const std::string value = trim(prefix);
     std::size_t dots = 0;
@@ -233,12 +300,16 @@ bool contents_heading(const std::string& text) {
     const auto lower = lower_ascii(trim(text));
     return lower == "contents" || lower == "table of contents";
 }
+// Length of a leading "Part "/"Chapter "/"Section "/"Appendix " label in
+// lower-case text, or 0.
+std::size_t heading_label(const std::string& lower) {
+    for (const char* label : {"part ", "chapter ", "section ", "appendix "})
+        if (lower.rfind(label, 0) == 0) return std::string(label).size();
+    return 0;
+}
 bool section_heading(const std::string& text) {
     const auto lower = lower_ascii(trim(text));
-    if (lower.rfind("part ", 0) == 0 ||
-        lower.rfind("chapter ", 0) == 0 ||
-        lower.rfind("section ", 0) == 0)
-        return true;
+    if (heading_label(lower)) return true;
     if (text.size() > 38) return false;
     std::size_t letters = 0;
     bool lowercase = false;
@@ -262,6 +333,12 @@ struct Row {
     int column = 0;
     double left = 0, right = 0, top = 0, bottom = 0;
     double page_height = 0;
+    double text_right = 0;  // Right edge of the row's non-reference text.
+    // A separate rightmost region read as a number with text-layer artifacts
+    // ("21 1"): its literal, its digits and the row text without it.
+    std::optional<std::string> tail_literal;
+    std::string tail_digits, body;
+    std::vector<std::string> repairs;  // Text-layer corrections, for diagnostics.
 };
 struct Draft {
     TocEntry entry;
@@ -332,7 +409,10 @@ std::vector<Row> assemble_rows(const text::PageContent& content,
     }
     std::vector<double> references;
     for (const auto& part : parts) {
-        if (split_row(part.text).printed || reference(part.text))
+        const auto number = ocr_section_number(part.text, true);
+        if (number && number->second == part.text.size()) continue;  // "8.1 1".
+        if (split_row(part.text).printed || reference(part.text) ||
+            ocr_number(part.text))
             references.push_back(part.right);
     }
     std::sort(references.begin(), references.end());
@@ -396,9 +476,36 @@ std::vector<Row> assemble_rows(const text::PageContent& content,
             row.right = line.front().right;
             row.top = line.front().top;
             row.bottom = line.front().bottom;
-            for (const auto& fragment : line) {
+            // A section number in its own region ("8.1 1", "8. I3").
+            if (line.size() >= 2) {
+                auto& first = line.front();
+                const auto fixed = ocr_section_number(first.text, true);
+                if (fixed && fixed->second == first.text.size()) {
+                    row.repairs.push_back("Section number '" + first.text +
+                                          "' read as '" + fixed->first + "'");
+                    first.text = fixed->first;
+                }
+            }
+            // A page number in its own region at the row's end ("21 1").
+            std::size_t body_count = line.size();
+            if (line.size() >= 2 &&
+                line.back().left - line[line.size() - 2].right >= 4.0) {
+                if (const auto digits = ocr_number(line.back().text)) {
+                    row.tail_literal = line.back().text;
+                    row.tail_digits = *digits;
+                    body_count = line.size() - 1;
+                }
+            }
+            for (std::size_t k = 0; k < line.size(); ++k) {
+                const auto& fragment = line[k];
                 if (!row.text.empty()) row.text += ' ';
                 row.text += fragment.text;
+                if (k < body_count) {
+                    if (!row.body.empty()) row.body += ' ';
+                    row.body += fragment.text;
+                }
+                if (!reference(fragment.text) && !ocr_number(fragment.text))
+                    row.text_right = std::max(row.text_right, fragment.right);
                 row.sources.push_back(fragment.source);
                 row.left = std::min(row.left, fragment.left);
                 row.right = std::max(row.right, fragment.right);
@@ -412,21 +519,130 @@ std::vector<Row> assemble_rows(const text::PageContent& content,
     return output;
 }
 
+std::string section_number(const std::string& title);
+
+// "Chapter 3" alone is a heading; "Chapter 3. White Dwarfs" with a number
+// after it is a heading with its page reference.
+bool heading_with_reference(const std::string& title) {
+    const std::string value = lower_ascii(trim(title));
+    std::size_t words = 0;
+    std::string first;
+    for (std::size_t i = 0; i < value.size();) {
+        while (i < value.size() && value[i] == ' ') ++i;
+        const std::size_t start = i;
+        while (i < value.size() && value[i] != ' ') ++i;
+        if (i > start) {
+            if (words == 0) first = value.substr(start, i - start);
+            ++words;
+        }
+    }
+    return words >= 3 || (words == 2 && !heading_label(first + " "));
+}
+
+// Title and printed reference of one row.
+Split split_fields(const Row& row) {
+    if (row.tail_literal) {
+        Split fields{clean_title(row.body), single_reference(row.tail_digits)};
+        if (fields.printed && !fields.title.empty()) {
+            fields.printed->literal = trim(*row.tail_literal);
+            fields.printed->reasons.push_back(
+                "Read as " + row.tail_digits +
+                ": a space or the letter I/l inside a number in the text layer");
+            return fields;
+        }
+    }
+    if (section_heading(row.text) && !leader_before_final_token(row.text)) {
+        Split fields = split_row(row.text);
+        if (fields.printed && heading_with_reference(fields.title)) return fields;
+        return {trim(row.text), std::nullopt};
+    }
+    return split_row(row.text);
+}
+
+// "2.1 ...", "Chapter 3 ...": a row that begins its own entry.
+bool starts_entry(const std::string& text) {
+    const std::string value = trim(text);
+    const std::string lower = lower_ascii(value);
+    return heading_label(lower) || !section_number(value).empty();
+}
+
+// A row that starts with a label: "Chapter 1.", "4.6", "D.2", "12", "C".
+bool labelled(const std::string& text) {
+    if (starts_entry(text)) return true;
+    const std::string value = trim(text);
+    std::string token = value.substr(0, std::min(value.find(' '), value.size()));
+    if (token.size() == value.size()) return false;
+    if (!token.empty() && token.back() == '.') token.pop_back();
+    return (token.size() == 1 && token[0] >= 'A' && token[0] <= 'Z') ||
+           (!token.empty() && token.size() <= 3 && decimal(token).has_value());
+}
+
+// "xiv Contents", "Contents xv": the TOC page's own running head.
+bool running_head(const Row& row) {
+    const std::string value = lower_ascii(trim(row.text));
+    bool word = false, folio = false;
+    for (std::size_t i = 0; i < value.size();) {
+        const auto end = std::min(value.find(' ', i), value.size());
+        const std::string token = value.substr(i, end - i);
+        if (token == "contents") word = true;
+        else if (decimal(token) || roman(token)) folio = true;
+        else if (!token.empty()) return false;
+        i = end + 1;
+    }
+    const double center = (row.top + row.bottom) / 2.0;
+    return word && folio && std::isfinite(row.page_height) &&
+           row.page_height > 0 && center <= row.page_height * 0.12;
+}
+
+// A title line that cannot end a title: it ends with a comma, colon or
+// hyphen, or with a word such as "and" or "of".
+bool ends_open(const std::string& text) {
+    const std::string value = lower_ascii(trim(text));
+    if (value.empty()) return false;
+    const char last = value.back();
+    if (last == ',' || last == ':' || last == '-' || last == ';') return true;
+    const auto space_at = value.rfind(' ');
+    const std::string word =
+        space_at == std::string::npos ? value : value.substr(space_at + 1);
+    static const std::set<std::string> open = {
+        "a", "an", "and", "as", "at", "by", "for", "from", "in", "into", "of",
+        "on", "or", "the", "to", "via", "with"};
+    return open.count(word) != 0;
+}
+
+// `measure` is the widest title text in the row's page column.
 bool can_wrap(const Row& first, const Row& second,
-              const ParsingOptions& options) {
-    if (contents_heading(first.text) || section_heading(first.text) ||
-        first.text.size() < 18 || !split_row(second.text).printed)
+              const ParsingOptions& options, double measure) {
+    if (contents_heading(first.text) || first.text.size() < 18 ||
+        starts_entry(second.text))
         return false;
+    const Split continuation = split_fields(second);
+    if (!continuation.printed) return false;
+    const bool same_column = first.page_index == second.page_index &&
+                             first.column == second.column;
+    const double line_height = std::max(first.bottom - first.top,
+                                         second.bottom - second.top);
+    const bool close = same_column && second.top >= first.top &&
+                       second.top - first.bottom <=
+                           options.wrap_line_gap_factor * line_height;
+    // Hanging indent: the first line starts with a label, the continuation
+    // starts right of it, and its first word would not have fit on the full
+    // first line.
+    if (close && labelled(first.text) &&
+        second.left > first.left + options.root_indent_tolerance_points &&
+        !continuation.title.empty() && second.text_right > second.left) {
+        const std::string& title = continuation.title;
+        const std::size_t word = std::min(title.find(' '), title.size());
+        const double word_width = (second.text_right - second.left) *
+                                  static_cast<double>(word) /
+                                  static_cast<double>(title.size());
+        if (first.text_right + word_width > measure || ends_open(first.text))
+            return true;
+    }
+    if (section_heading(first.text)) return false;
     if (std::abs(first.left - second.left) >
         options.child_indent_min_points) return false;
-    if (first.page_index == second.page_index &&
-        first.column == second.column) {
-        const double line_height = std::max(first.bottom - first.top,
-                                             second.bottom - second.top);
-        return second.top >= first.top &&
-               second.top - first.bottom <=
-                   options.wrap_line_gap_factor * line_height;
-    }
+    if (same_column) return close;
     return second.page_index == first.page_index + 1 &&
            first.bottom >= first.page_height * 0.75 &&
            second.top <= second.page_height * 0.25;
@@ -471,6 +687,22 @@ std::string section_number(const std::string& title) {
     return word;
 }
 
+// The number a title starts with, as a possible parent of dotted section
+// numbers: "2 Basics" and "2. Basics" -> "2", "Chapter 2: Basics" -> "2",
+// "A.2 Tables" -> "A.2". Empty when the title has no number of its own.
+std::string heading_number(const std::string& title) {
+    std::string value = trim(title);
+    const std::string lower = lower_ascii(value);
+    if (const auto label = heading_label(lower))
+        value = trim(value.substr(label));
+    const auto space_at = value.find(' ');
+    if (space_at == std::string::npos) return {};  // A number with no title.
+    std::string token = value.substr(0, space_at);
+    while (!token.empty() && (token.back() == '.' || token.back() == ':'))
+        token.pop_back();
+    return token;
+}
+
 // Explicit numbering ("2.1" under "2", "A.2.1" under "A.2") is stronger
 // evidence than indentation: it fills unknown parents and overrides a
 // conflicting indentation guess, with the reason recorded.
@@ -480,11 +712,7 @@ void numbering_hierarchy(std::vector<Draft>& drafts) {
         if (number.empty()) continue;
         const std::string parent = number.substr(0, number.rfind('.'));
         for (std::size_t prev = i; prev > 0; --prev) {
-            const std::string& title = drafts[prev - 1].entry.title;
-            if (title.size() <= parent.size() ||
-                title.compare(0, parent.size(), parent) != 0 ||
-                title[parent.size()] != ' ')
-                continue;
+            if (heading_number(drafts[prev - 1].entry.title) != parent) continue;
             auto& hierarchy = drafts[i].entry.hierarchy;
             const auto& parent_id = drafts[prev - 1].entry.id;
             if (hierarchy.kind == HierarchyKind::KnownParent &&
@@ -629,22 +857,43 @@ Result<ParsedToc> parse(
                     std::make_move_iterator(page_rows.end()));
     }
 
+    // Widest title text per page column: a line this wide was full.
+    std::map<std::pair<PageIndex, int>, double> measure;
+    for (const auto& row : rows) {
+        auto& width = measure[{row.page_index, row.column}];
+        width = std::max(width, row.text_right);
+    }
     std::vector<Draft> drafts;
     for (std::size_t i = 0; i < rows.size(); ++i) {
         const auto& row = rows[i];
         if (contents_heading(row.text)) continue;
-        Split fields = section_heading(row.text) &&
-            !leader_before_final_token(row.text) ?
-            Split{trim(row.text), std::nullopt} : split_row(row.text);
+        if (running_head(row)) {
+            result.diagnostics.push_back(
+                "Ignored the TOC page's running head '" + trim(row.text) +
+                "' on page " + std::to_string(row.page_index));
+            continue;
+        }
+        Split fields = split_fields(row);
         std::vector<text::SourceReference> sources = row.sources;
+        std::vector<std::string> repairs = row.repairs;
         if (!fields.printed && i + 1 < rows.size() &&
-            can_wrap(row, rows[i + 1], options)) {
-            const auto continuation = split_row(rows[i + 1].text);
+            can_wrap(row, rows[i + 1], options,
+                     measure[{row.page_index, row.column}])) {
+            const auto continuation = split_fields(rows[i + 1]);
             fields.title = trim(row.text + " " + continuation.title);
             fields.printed = continuation.printed;
             sources.insert(sources.end(), rows[i + 1].sources.begin(),
                            rows[i + 1].sources.end());
+            repairs.insert(repairs.end(), rows[i + 1].repairs.begin(),
+                           rows[i + 1].repairs.end());
             ++i;
+        }
+        // "2. I Thermodynamic ...": the letter I for 1 in a section number.
+        if (const auto fixed = ocr_section_number(fields.title, false)) {
+            repairs.push_back("Section number '" +
+                              fields.title.substr(0, fixed->second) +
+                              "' read as '" + fixed->first + "'");
+            fields.title = fixed->first + fields.title.substr(fixed->second);
         }
         const bool heading = section_heading(fields.title);
         if (!fields.printed && !heading && margin_page_number(row)) {
@@ -672,6 +921,8 @@ Result<ParsedToc> parse(
         entry.order = drafts.size();
         entry.printed_reference = std::move(fields.printed);
         entry.sources = std::move(sources);
+        for (const auto& repair : repairs)
+            entry.diagnostics.push_back(repair + " (text-layer artifact)");
         if (!entry.printed_reference)
             entry.diagnostics.push_back(
                 "Section heading without printed reference");

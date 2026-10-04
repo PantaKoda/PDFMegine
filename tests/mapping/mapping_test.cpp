@@ -111,8 +111,41 @@ int main() {
                 ResolutionMethod::InferredOffset &&
             inferred.value().entries[0].supporting_pages.size() == 3 &&
             inferred.value().entries[0].supporting_sources.size() >= 2 &&
-            inferred.value().policy_id == "s4-page-mapping-v3",
+            inferred.value().policy_id == "s4-page-mapping-v4",
             "printed ordinal 1 at index 12 implies offset 11, with two anchors and target confirmation");
+
+    // Issue #13: a target heading that differs from the TOC entry only by
+    // text-layer errors (one wrong letter, "1" for "I", a chapter label the
+    // page omits) confirms an offset that two anchors already give.
+    auto layer_errors = base;
+    layer_errors.pages = {page(12, "1"), page(14, "3"),
+                   page(41, {}, "13.4 Hercules X-I: A Protolype Binary X-Ray Pulsar"),
+                   page(51, {}, "Appendix 1 Radiative Transport"),
+                   page(55, {}, "Star Deaths and the Formation of Compact Objects"),
+                   page(56, {}, "Pulsers")};
+    const auto approximate = map(
+        {entry("e30", "13.4 Hercules X-I: A Prototype Binary X-Ray Pulsar", "30",
+               NumberingStyle::Decimal, 30),
+         entry("e40", "Appendix I. Radiative Transport", "40", NumberingStyle::Decimal, 40),
+         entry("e44", "Chapter 1. Star Deaths and the Formation of Compact Objects", "44",
+               NumberingStyle::Decimal, 44),
+         entry("e45", "Pulsars", "45", NumberingStyle::Decimal, 45)},
+        layer_errors);
+    require(approximate && approximate.value().entries.size() == 4,
+            "approximate confirmation fixture maps");
+    const auto& loose = approximate.value().entries;
+    for (std::size_t i = 0; i < 3; ++i)
+        require(loose[i].status == MappingStatus::Resolved &&
+                    loose[i].pdf_page_index == static_cast<PageIndex>(
+                        std::vector<int>{41, 51, 55}[i]) &&
+                    std::any_of(loose[i].supporting_sources.begin(),
+                                loose[i].supporting_sources.end(),
+                                [&](const text::SourceReference& s) {
+                                    return s.page_index == *loose[i].pdf_page_index;
+                                }),
+                "a heading with text-layer errors confirms the offset target");
+    require(loose[3].status == MappingStatus::Unresolved,
+            "a short title is never matched loosely ('Pulsers' is not 'Pulsars')");
 
     auto insufficient = base;
     insufficient.pages = {page(12, "1")};

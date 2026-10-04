@@ -27,3 +27,13 @@ cd <an unrelated directory>
 Set `BUILD_SHARED_LIBS=ON` for S3's shared build. In the existing root build, configure with `PDFBOOKMARK_BUILD_PARSING=ON`, build `pdfbookmarkTocParsing` and `pdfbookmark_parsing_tests`, then run CTest `parsing_pure`.
 
 **Handoff to S4 and Engine:** Use entry `id` and `sources` to preserve evidence. Treat `PrintedReference.literal` as the document's printed text; its parsed `ordinal` is syntax, never a physical index. S4 must establish numbering-section and destination evidence separately. Engine should retain `unparsed`, `missing_pages`, boundary states, and hierarchy uncertainty in its analysis and decide whether to request more S1 pages or apply an explicit partial-plan policy. S3 performs neither action.
+
+## Revision v3 (4 October 2026, issue #13)
+
+Policy `s3-toc-parsing-v3` (decision E-40):
+- **S3-10 Text-layer number repairs.** A page number in its own region at the end of a row with a stray space or the letter I/l for 1 ("21 1", "I I9", "33 I") is read as one number of at most 3 digits (4 without a space). The literal stays as printed, and the reference's `reasons` say how it was read. A leading section number with the same artifacts ("2. I", "8. I3", "I 8.6", and "8.1 1" when it is its own region) is corrected in the title, with an entry diagnostic. Such section-number regions are not counted as references when the parser looks for a second column.
+- **S3-11 Chapter rows keep their page number.** A heading row ("Chapter 2. Cold Equation of State 17") is split into title and reference when at least two words remain and they are not only a label and its number ("Chapter 3").
+- **S3-12 Hanging-indent wraps.** A row without a reference that starts with a label ("Chapter 1.", "4.6", "D.2", "C") continues on the next row when that row is indented, has a reference, does not start its own entry, and either its first word would not have fit on the full first line or the first line ends open (a comma, colon, hyphen or a word such as "and", "of").
+- **S3-13 Running heads.** "xiv Contents" / "Contents xv" in the top 12% of a TOC page is ignored with a diagnostic.
+- **S3-14 Labels.** "Appendix" is a heading label like "Chapter", "Part" and "Section", and numbered sections nest under "Chapter 8." or "8." as under "8".
+- **Tests:** `parsing_pure` adds a noisy reprint page covering every rule above and a short heading that must not swallow its indented first entry.

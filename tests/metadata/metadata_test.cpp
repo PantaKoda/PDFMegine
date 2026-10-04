@@ -81,7 +81,7 @@ int main() {
     const auto result = extract({contents, copyright, title, cover});
     require(static_cast<bool>(result), "extract succeeds");
     const auto& r = result.value();
-    require(r.policy_id == "s6-document-metadata-v2", "policy id");
+    require(r.policy_id == "s6-document-metadata-v3", "policy id");
     require(r.pages.size() == 4 && r.pages[0].role == PageRole::Cover &&
                 r.pages[1].role == PageRole::TitlePage &&
                 r.pages[2].role == PageRole::Copyright &&
@@ -268,6 +268,145 @@ int main() {
                 !conflict.value().title.value &&
                 conflict.value().title.alternatives.size() == 2,
             "competing titles stay ambiguous with both alternatives");
+
+    // Issue #13: a reprint whose text layer was made by OCR. The half-title
+    // sets the subtitle smaller and apart; the title page sets it in capitals
+    // over two lines, then the authors one per line, an affiliation, a
+    // letter-spaced publisher logo with a soft hyphen and the imprint. The
+    // copyright page reads the copyright sign as "0".
+    const auto half_title = page(0, {{"Black Holes,", 72.3, 16.8},
+                                     {"White Dwarfs,", 92.7, 16.8},
+                                     {"and Neutron Stars", 113.0, 13.7},
+                                     {"The Physics of Compact Objects", 141.6, 11.8}});
+    const auto title_page = [&](const std::vector<std::string>& authors, bool affiliation) {
+        std::vector<L> lines = {{"Black Holes,", 73.8, 27.2},
+                                {"White Dwarfs,", 105.3, 28.0},
+                                {"and Neutron Stars", 138.5, 22.2},
+                                {"THE PHYSICS OF", 191.5, 13.5},
+                                {"COMPACT OBJECTS", 211.8, 13.5}};
+        double y = 286.2;
+        for (const auto& a : authors) {
+            lines.push_back({a, y, 17.1});
+            y += 26.1;
+        }
+        if (affiliation) lines.push_back({"Cornell University, Ithaca, New York", y - 6, 9.5});
+        lines.push_back({"W I LEY\xC2\xAD" "VCH", 480.4, 19.4});
+        lines.push_back({"WILEY-VCH Verlag GmbH & Co. KGaA", 511.7, 13.2});
+        return page(1, lines);
+    };
+    const auto reprint_copyright = page(2, {
+        {"Library of Congress Card No.: applied for", 246.7, 8.3},
+        {"0 1983 by A & Sons, Inc.", 386.6, 8.3},
+        {"0 2004 B Verlag GmbH & Co. KGaA, Weinheim", 399.6, 8.4},
+        {"All rights reserved (including those of translation into other languages).", 424.6, 8.3}});
+    std::vector<L> body_lines = {{"Copyright 0 2004 B Verlag GmbH & Co. KGaA", 20, 6.9}};
+    for (int i = 0; i < 30; ++i)
+        body_lines.push_back({"A line of ordinary body text in the first chapter.", 100.0 + 12 * i, 9.6});
+    const auto chapter_page = page(15, body_lines);
+    const std::vector<std::vector<std::string>> author_sets = {
+        {"Stuart L. Shapiro"},
+        {"Stuart L. Shapiro", "Saul A. Teukolsky"},
+        {"Stuart L. Shapiro", "Saul A. Teukolsky", "Ann B. Author"}};
+    for (const auto& authors : author_sets)
+        for (const bool affiliation : {true, false}) {
+            const auto r = extract(
+                {half_title, title_page(authors, affiliation), reprint_copyright, chapter_page});
+            const std::string variant = std::to_string(authors.size()) + " author(s)" +
+                                        (affiliation ? " with affiliation" : "");
+            require(r && r.value().title.status == FieldStatus::Resolved &&
+                        r.value().title.value->title ==
+                            "Black Holes, White Dwarfs, and Neutron Stars" &&
+                        r.value().title.value->subtitle == "The Physics of Compact Objects" &&
+                        r.value().title.alternatives.empty(),
+                    "one title read on two pages, in two layouts, agrees (" + variant + ")");
+            require(r.value().contributors.status == FieldStatus::Resolved &&
+                        names(r.value().contributors) == authors,
+                    "title-page author block gives every author in order, no subtitle or "
+                    "logo line (" + variant + ")");
+        }
+    const auto reprint = extract({half_title, title_page(author_sets[1], true),
+                                  reprint_copyright, chapter_page});
+    const auto& cy = reprint.value().copyright_year;
+    require(cy.status == FieldStatus::Resolved && cy.value->year == 1983 &&
+                cy.evidence.size() == 1 && cy.evidence[0].source.page_index == 2 &&
+                cy.alternatives.size() == 1 && cy.alternatives[0].value.year == 2004,
+            "'0 1983 by A' is the original copyright; the 2004 reprint is an alternative");
+    require(reprint.value().publication_year.status == FieldStatus::NotFoundInSearch &&
+                reprint.value().pages[3].role == PageRole::Other,
+            "a running 'Copyright 0 2004' head does not make a copyright page");
+    // A running foot is weaker evidence: it counts only for a kind of year
+    // that no copyright page states.
+    std::vector<L> footed = {{"\xC2\xA9 2024 B GmbH. Published 2024 by B", 680, 6.9}};
+    for (int i = 0; i < 30; ++i)
+        footed.push_back({"A line of ordinary body text in the first chapter.", 100.0 + 12 * i, 9.6});
+    const auto with_foot = extract({reprint_copyright, page(20, footed)});
+    require(with_foot && with_foot.value().copyright_year.value->year == 1983 &&
+                with_foot.value().publication_year.status == FieldStatus::Resolved &&
+                with_foot.value().publication_year.value->year == 2024 &&
+                with_foot.value().publication_year.evidence[0].source.page_index == 20,
+            "a running foot gives the publication year no copyright page states, "
+            "not the copyright year the copyright page states");
+
+    // Counterexamples found on real books: a law's year is not a copyright
+    // year, a figure axis "0 2000 4000" is not a copyright sign and year.
+    const auto legal = extract({page(4, {
+        {"Copyright \xC2\xA9 2005, Howard D. Curtis. All rights reserved", 100, 8},
+        {"provisions of the Copyright, Designs and Patents Act 1988 or under the terms", 115, 8},
+        {"permitted under Section 107 or 108 of the 1976 United States Copyright Act", 130, 8},
+        {"0 2000 4000 6000 8000 10000", 145, 8}})});
+    require(legal && legal.value().copyright_year.status == FieldStatus::Resolved &&
+                legal.value().copyright_year.value->year == 2005,
+            "years of copyright laws and figure axes are not copyright years");
+    require(!extract({page(1, {{"Black Holes,", 73.8, 27.2},
+                               {"F IFTH E DITION", 200, 17.1},
+                               {"\xE2\x80\x94 Jean-Claude Brantschen", 230, 17.1}})})
+                 .value().contributors.value,
+            "small capitals ('F IFTH E DITION') and a dash-led attribution are not names");
+    // A smaller line of names below the title is the authors, not a subtitle.
+    const auto names_below = extract({page(3, {{"Applied Computational Physics", 92.5, 16.8},
+                                               {"Joseph F. Boudreau and Eric S. Swanson", 132.6, 11.5},
+                                               {"with contributions from Riccardo Maria Bianchi", 159, 9.7}})});
+    require(names_below &&
+                (!names_below.value().title.value || !names_below.value().title.value->subtitle) &&
+                !names_below.value().contributors.alternatives.empty() &&
+                names_below.value().contributors.alternatives[0].value.size() == 2,
+            "a line listing names is read as contributors, not as the subtitle");
+    // "by ..." confirms the names it gives, not other name-like lines on the
+    // page (a subtitle fragment, the publisher's city).
+    const auto stated = extract({page(4, {{"How Linux Works", 100, 30},
+                                          {"Should\xC2\xA0Know", 200, 12},
+                                          {"by Brian Ward", 250, 12},
+                                          {"San Francisco", 600, 9}})});
+    require(stated && names(stated.value().contributors) == std::vector<std::string>{"Brian Ward"},
+            "a responsibility statement confirms only its own names");
+    // Names whose words are separated by no-break spaces are still names.
+    const auto nbsp = extract({page(1, {{"Pro Cryptography and", 156, 37.5},
+                                        {"Cryptanalysis", 198, 37.5},
+                                        {"Marius\xC2\xA0Iulian\xC2\xA0Mihailescu", 527, 13.1},
+                                        {"Stefania\xC2\xA0Loredana\xC2\xA0Nita", 547, 13.3}})});
+    require(nbsp && !nbsp.value().contributors.alternatives.empty() &&
+                nbsp.value().contributors.alternatives[0].value.size() == 2 &&
+                nbsp.value().contributors.alternatives[0].value[0].name == "Marius Iulian Mihailescu",
+            "no-break spaces inside names are read as spaces");
+    // A chapter opening set large ("1 Mathematical Preliminaries") is not a title.
+    const auto chapter_open = extract({page(18, {{"1 Mathematical Preliminaries", 120, 30},
+                                                 {"and Error Analysis", 160, 30},
+                                                 {"Introduction", 300, 10}})});
+    require(chapter_open && chapter_open.value().title.status == FieldStatus::NotFoundInSearch,
+            "a numbered chapter heading is not the book title");
+    // An author and, far below in another size, the publisher's cities are
+    // two blocks: the layout rule does not resolve either.
+    const auto cities = extract({page(2, {{"Think Bayes", 152, 28.5},
+                                          {"Bayesian Statistics in Python", 183, 17.2},
+                                          {"Allen B. Downey", 370, 15.3},
+                                          {"Beijing Boston Farnham Sebastopol Tokyo", 595, 11.1}})});
+    require(cities && cities.value().contributors.status == FieldStatus::Ambiguous,
+            "name lines far apart in different sizes are not one author block");
+    // A soft hyphen or letter-spaced logo is never a name, even on its own.
+    const auto logo_only = extract({page(1, {{"Black Holes,", 73.8, 27.2},
+                                             {"W I LEY\xC2\xAD" "VCH", 300, 17.1}})});
+    require(logo_only && logo_only.value().contributors.status == FieldStatus::NotFoundInSearch,
+            "a letter-spaced logo with a soft hyphen is not a contributor");
 
     // Body text only: nothing found, and a hint alone resolves nothing.
     DocumentHints hints;
