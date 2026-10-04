@@ -60,10 +60,10 @@ cmake --preset release
 cmake --build --preset release --target pdfbookmarkCli
 cmake --install out/build/release --component app --prefix dist/pdfbookmark
 cpack --config out/build/release/CPackConfig.cmake
-copy out\build\release\package\pdfbookmark-0.4.0-win64.zip dist\
+copy out\build\release\package\pdfbookmark-0.4.1-win64.zip dist\
 ```
 
-**Deliverable: `dist/pdfbookmark-0.4.0-win64.zip`** (141 MB, one top-level folder `pdfbookmark-0.4.0-win64/`). `dist/pdfbookmark/` is the same content unzipped. The version comes from the CMake cache variable `PDFBOOKMARK_VERSION` (default `0.4.0`) and is printed by `pdfbookmark --version`. The user guide inside the package is `packaging/README.txt`.
+**Deliverable: `dist/pdfbookmark-0.4.1-win64.zip`** (141 MB, one top-level folder `pdfbookmark-0.4.1-win64/`). `dist/pdfbookmark/` is the same content unzipped. The version comes from the CMake cache variable `PDFBOOKMARK_VERSION` (default `0.4.1`) and is printed by `pdfbookmark --version`. The user guide inside the package is `packaging/README.txt`.
 
 ### Installing as a command (users)
 
@@ -107,12 +107,12 @@ The CLI is a client of the shared library `pdfbookmark.dll`. The SDK is a CMake 
 ```powershell
 cmake --preset release;   cmake --build --preset release --target pdfbookmark
 cmake --preset sdk-debug; cmake --build --preset sdk-debug
-cmake --install out/build/release   --component sdk --prefix out/sdk/pdfbookmark-0.4.0-win64
-cmake --install out/build/sdk-debug --component sdk --prefix out/sdk/pdfbookmark-0.4.0-win64
-cd out/sdk; cmake -E tar cf ../../dist/pdfbookmark-sdk-0.4.0-win64.zip --format=zip pdfbookmark-0.4.0-win64
+cmake --install out/build/release   --component sdk --prefix out/sdk/pdfbookmark-0.4.1-win64
+cmake --install out/build/sdk-debug --component sdk --prefix out/sdk/pdfbookmark-0.4.1-win64
+cd out/sdk; cmake -E tar cf ../../dist/pdfbookmark-sdk-0.4.1-win64.zip --format=zip pdfbookmark-0.4.1-win64
 ```
 
-**Deliverable: `dist/pdfbookmark-sdk-0.4.0-win64.zip`** (188 MB zipped, 428 MB unzipped, measured for 0.3.0; most of it is the Debug OpenCV DLL and the models. From E-39 the OpenCV DLLs are smaller: Release 54 MB instead of 80 MB, Debug 88 MB instead of 140 MB). It contains:
+**Deliverable: `dist/pdfbookmark-sdk-0.4.1-win64.zip`** (188 MB zipped, 428 MB unzipped, measured for 0.3.0; most of it is the Debug OpenCV DLL and the models. From E-39 the OpenCV DLLs are smaller: Release 54 MB instead of 80 MB, Debug 88 MB instead of 140 MB). It contains:
 - `include/`: the public headers, `pdfbookmark.hpp` (C++) and `pdfbookmark.h` (C);
 - `lib/`: `pdfbookmark.lib` and `pdfbookmarkd.lib`, plus `lib/cmake/pdfbookmark`;
 - `bin/`: the Release DLLs; `bin/debug/`: the Debug dependency DLLs (`pdfbookmarkd.dll` itself is in `bin/`);
@@ -157,8 +157,8 @@ Clients use `find_package(pdfbookmark 0.1 CONFIG REQUIRED)`, link `pdfbookmark::
 3. Push a tag with the same number:
 
 ```powershell
-git tag v0.4.0
-git push origin v0.4.0
+git tag v0.4.1
+git push origin v0.4.1
 ```
 
 The workflow refuses a tag that doesn't match `PDFBOOKMARK_VERSION`.

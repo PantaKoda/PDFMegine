@@ -483,3 +483,12 @@ S6 decisions are recorded with its contract in `docs/handoffs/S6_HANDOFF.md`.
   - S3: inside a title, a section-number repair needs an I/l substitution ("3. 10 Things to Know" stays as printed).
   - S6: the sign pattern needs a space after a bare 0/O and a year from 1450 to 2100 ("02139 Cambridge, MA" is not a copyright line); only "Act <year>" and "Copyright/Patents/Rights Act" cite a law ("© 2010 ACT, Inc." keeps its year). The subtitle bound 0.9 is documented as fixed in S6-08.
   - After these fixes, the metadata of the 83 corpus PDFs is identical to the pass before them, and `shapiro1983.pdf` is unchanged (160/160, title, authors, 1983). `dev` 25/25.
+
+### E-41 Version 0.4.1 for issue #13 (4 Oct 2026)
+
+- **Change:** `PDFBOOKMARK_VERSION` is 0.4.1 in `CMakeLists.txt` and `vcpkg.json`; the package names and the tag command in `docs/BUILDING.md` follow. `PDFB_C_API_VERSION` stays 1.
+- **Why:** E-40 (PR #14) changes detection, parsing, mapping and metadata results for clients; a release lets them pick it up and tell it apart from 0.4.0.
+- **Assumptions:**
+  - A patch bump fits: E-40 changes rules and `policy_id` values but no exported C++ type and no JSON member, so clients built against 0.4.0 headers keep working with the 0.4.1 DLL.
+  - The package sizes quoted in `docs/BUILDING.md` are still those measured earlier and were not re-measured.
+- **Verified:** version strings only; the release workflow builds, smoke-tests and publishes the packages from tag `v0.4.1`.
