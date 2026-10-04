@@ -144,7 +144,7 @@ This is produced by `pdfb_extract_metadata`, `extract_metadata()` + `metadata_re
 
 | Member | Meaning |
 | --- | --- |
-| `input`, `policy_id` | §2; `"s6-document-metadata-v2"` (v2 adds `isbns`; the fields are unchanged) |
+| `input`, `policy_id` | §2; `"s6-document-metadata-v3"` (v2 added `isbns`; v3 changes only the rules, see E-40; the members are unchanged) |
 | `fields` | `title`, `contributors`, `edition`, `publication_year`, `copyright_year`, each a **field** (below) |
 | `isbns[]` | Every ISBN printed in the pages searched (below); `[]` when none was found |
 | `pages[]` | `{page_index, role, reasons}` for each page examined |

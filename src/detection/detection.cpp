@@ -13,7 +13,7 @@
 namespace pdfbookmark::detection {
 namespace {
 
-constexpr const char* kPolicyId = "s2-toc-detection-v2";
+constexpr const char* kPolicyId = "s2-toc-detection-v3";
 
 struct Fragment {
     std::string text;
@@ -35,7 +35,8 @@ struct Features {
     std::vector<double> anchors;
     std::size_t aligned_rows = 0;
     std::size_t leader_rows = 0;
-    bool heading = false;
+    bool heading = false;          // "Contents" on its own: a TOC starts.
+    bool running_head = false;     // "xiv Contents": a TOC page continues.
     bool excluded_heading = false;
     bool degraded = false;
 };
@@ -131,6 +132,24 @@ bool inline_reference(const std::string& text, bool& leader) {
     return true;
 }
 
+// "xiv contents", "contents xv": the word with only a page number beside
+// it is a running head, so the page continues a TOC rather than starting one.
+bool running_head_folio(const std::string& lower) {
+    bool word = false, folio = false;
+    std::size_t start = 0;
+    const std::string value = trim_ascii(lower);
+    while (start < value.size()) {
+        auto end = value.find(' ', start);
+        if (end == std::string::npos) end = value.size();
+        const std::string token = value.substr(start, end - start);
+        if (token == "contents") word = true;
+        else if (!token.empty() && reference_like(token)) folio = true;
+        else if (!token.empty()) return false;
+        start = end + 1;
+    }
+    return word && folio;
+}
+
 bool usable_quad(const Quad& quad) {
     for (const auto& point : quad.points)
         if (!std::isfinite(point.x) || !std::isfinite(point.y)) return false;
@@ -173,6 +192,26 @@ std::vector<Fragment> fragments_from(const text::PageContent& content) {
 
 double middle_y(const Quad& quad) {
     return (quad.points[0].y + quad.points[2].y) / 2.0;
+}
+
+// Number of visual lines: fragments whose vertical centres agree within
+// the band used to pair titles with references share a line.
+std::size_t visual_lines(const std::vector<Fragment>& fragments) {
+    std::vector<std::pair<double, double>> spans;  // (middle, height)
+    for (const auto& f : fragments)
+        spans.push_back({middle_y(f.quad), f.quad.points[2].y - f.quad.points[0].y});
+    std::sort(spans.begin(), spans.end());
+    std::size_t lines = 0;
+    double middle = 0, height = 0;
+    for (const auto& [y, h] : spans) {
+        if (lines == 0 ||
+            y - middle > std::max(4.0, 0.6 * std::max(h, height))) {
+            ++lines;
+            middle = y;
+            height = h;
+        }
+    }
+    return lines;
 }
 
 std::vector<Row> reference_rows(const std::vector<Fragment>& fragments,
@@ -288,8 +327,10 @@ Features assess(const text::PageAcquisition& page,
         if (fragment.quad.points[0].y > height * 0.25 ||
             fragment.text.size() > 48) continue;
         const std::string lower = lower_ascii(fragment.text);
-        if (lower.find("contents") != std::string::npos)
-            out.heading = true;
+        if (lower.find("contents") != std::string::npos) {
+            if (running_head_folio(lower)) out.running_head = true;
+            else out.heading = true;
+        }
         bool ignored_leader = false;
         const bool row_with_reference =
             inline_reference(fragment.text, ignored_leader);
@@ -326,20 +367,27 @@ Features assess(const text::PageAcquisition& page,
     for (const auto id : evidence_ids)
         out.evidence.push_back({page.page_index, content.revision, id,
                                 std::nullopt, std::nullopt});
-    // Density is rows per visual line: fragments that together form one row
-    // (a title region plus its separate reference region, or duplicate
-    // observations) count once, so split native runs are not penalized.
+    // Density is rows per visual line. Fragments on one line (a section
+    // number, its title and its reference in three column regions, or
+    // duplicate observations) count once, so split native runs are not
+    // penalized. Two columns side by side can exceed one row per line.
+    // The visual count applies to pages whose rows end in one or two
+    // reference columns, as a TOC's do; numbers in many columns (a reference
+    // list, a table) keep the v2 count: fragments minus those merged into rows.
     std::size_t merged = 0;
     for (const auto& row : rows) merged += row.fragments - 1;
-    const std::size_t lines =
-        fragments.size() > merged ? fragments.size() - merged : 1;
-    const double density = fragments.empty() ? 0.0 :
-        static_cast<double>(out.aligned_rows) / static_cast<double>(lines);
+    std::size_t lines = fragments.size() > merged ? fragments.size() - merged : 1;
+    if (out.anchors.size() <= 2)
+        lines = std::max<std::size_t>(std::min(lines, visual_lines(fragments)), 1);
+    const double density = fragments.empty() ? 0.0 : std::min(1.0,
+        static_cast<double>(out.aligned_rows) / static_cast<double>(lines));
     out.review.score = 2.0 * out.aligned_rows +
                        static_cast<double>(std::min<std::size_t>(out.leader_rows, 3)) +
-                       2.0 * density + (out.heading ? 2.0 : 0.0) -
+                       2.0 * density + (out.heading || out.running_head ? 2.0 : 0.0) -
                        (out.excluded_heading ? 8.0 : 0.0);
     if (out.heading) out.review.reasons.push_back("Contents heading cue");
+    if (out.running_head)
+        out.review.reasons.push_back("Contents running head (continued page)");
     if (out.excluded_heading)
         out.review.reasons.push_back("Index/glossary/list heading counterexample");
     if (out.aligned_rows)
@@ -461,6 +509,30 @@ Result<DetectionResult> detect(
                     options.max_interrupted_pages ||
                 !compatible(features[previous], features[next]))
                 break;
+            // One rejected page between two compatible TOC pages, with
+            // aligned rows in the same reference column, continues the TOC
+            // (its rows may be too sparse for the page-level threshold).
+            if (distance == 2) {
+                const auto found = by_index.find(ordered[previous]->page_index + 1);
+                if (found != by_index.end()) {
+                    const auto& middle = features[found->second];
+                    if (middle.review.status == PageStatus::Rejected &&
+                        middle.review.revision && !middle.excluded_heading &&
+                        middle.aligned_rows >= options.min_reference_rows &&
+                        compatible(features[previous], middle) &&
+                        compatible(middle, features[next])) {
+                        add_page(found->second, candidate);
+                        candidate.reasons.push_back(
+                            "Page " + std::to_string(middle.review.page_index) +
+                            " included between compatible TOC pages (" +
+                            std::to_string(middle.aligned_rows) +
+                            " aligned rows, below the page threshold)");
+                        add_page(next, candidate);
+                        ++cursor;
+                        continue;
+                    }
+                }
+            }
             std::vector<CandidateGap> gaps;
             bool supplied_interruption = true;
             for (std::int64_t index =

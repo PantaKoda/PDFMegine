@@ -14,7 +14,7 @@
 
 namespace pdfbookmark::mapping {
 namespace {
-constexpr const char* kPolicyId = "s4-page-mapping-v3";
+constexpr const char* kPolicyId = "s4-page-mapping-v4";
 bool space(unsigned char c) {
     return c == ' ' || c == '\t' || c == '\r' ||
            c == '\n' || c == '\f' || c == '\v';
@@ -658,6 +658,127 @@ std::vector<text::SourceReference> confirming_sources(
     }
     return result;
 }
+// Words of `text` for approximate matching only (never reported): lower
+// case, punctuation separates words, a soft hyphen (U+00AD) joins, and the
+// text-layer confusions I/l for 1 and O for 0 are undone in words with a
+// digit and in one-letter words ("Appendix I" and "Appendix 1" agree).
+std::string loose_key(const std::string& text) {
+    std::vector<std::string> words(1);
+    for (std::size_t i = 0; i < text.size(); ++i) {
+        const auto c = static_cast<unsigned char>(text[i]);
+        if (c == 0xC2 && i + 1 < text.size() &&
+            static_cast<unsigned char>(text[i + 1]) == 0xAD) {
+            ++i;  // Soft hyphen.
+            continue;
+        }
+        if (digit(c) || letter(c) || c >= 0x80)
+            words.back() += static_cast<char>(c >= 'A' && c <= 'Z' ? c - 'A' + 'a' : c);
+        else if (!words.back().empty())
+            words.emplace_back();
+    }
+    std::string key;
+    for (auto& word : words) {
+        if (word.empty()) continue;
+        const bool numeric = word.size() == 1 ||
+            std::any_of(word.begin(), word.end(),
+                        [](char c) { return digit(static_cast<unsigned char>(c)); });
+        if (numeric)
+            for (char& c : word) {
+                if (c == 'i' || c == 'l') c = '1';
+                else if (c == 'o') c = '0';
+            }
+        if (!key.empty()) key += ' ';
+        key += word;
+    }
+    return key;
+}
+
+std::size_t edit_distance(const std::string& a, const std::string& b) {
+    std::vector<std::size_t> row(b.size() + 1);
+    for (std::size_t j = 0; j <= b.size(); ++j) row[j] = j;
+    for (std::size_t i = 1; i <= a.size(); ++i) {
+        std::size_t diagonal = row[0];
+        row[0] = i;
+        for (std::size_t j = 1; j <= b.size(); ++j) {
+            const std::size_t above = row[j];
+            row[j] = std::min({row[j] + 1, row[j - 1] + 1,
+                               diagonal + (a[i - 1] == b[j - 1] ? 0 : 1)});
+            diagonal = above;
+        }
+    }
+    return row[b.size()];
+}
+
+// Confirms an offset-derived target whose heading differs from the entry
+// only by text-layer errors: one wrong letter in 20 ("Protolype"), I/1,
+// punctuation, or a chapter/appendix label the page sets apart or omits.
+// Only for targets that two agreeing anchors already give; exact headings
+// remain the only heading anchors. A page holding TOC entries never
+// confirms: its row for the entry says nothing about where the entry starts.
+std::optional<std::pair<text::SourceReference, std::string>> approximate_heading(
+    const parsing::TocEntry& entry, PageIndex target, const Pages& pages,
+    const std::set<PageIndex>& toc_pages, const MappingOptions& options) {
+    if (toc_pages.count(target)) return std::nullopt;
+    const auto found = pages.find(target);
+    if (found == pages.end() || !found->second->selected) return std::nullopt;
+    const auto& content = *found->second->selected;
+    const double height = content.geometry.height_points;
+    if (!std::isfinite(height) || height <= 0) return std::nullopt;
+    std::vector<std::string> wanted{loose_key(entry.title)};
+    {
+        const std::string& key = wanted.front();
+        for (const char* label : {"chapter ", "appendix ", "part ", "section "})
+            if (key.rfind(label, 0) == 0) {
+                const auto number_end = key.find(' ', std::string(label).size());
+                if (number_end != std::string::npos)
+                    wanted.push_back(key.substr(number_end + 1));  // Title only.
+                break;
+            }
+    }
+    const bool numbered = digit(static_cast<unsigned char>(wanted.front()[0]));
+    struct Line { const text::TextRegion* region; double top, bottom; std::string key; };
+    std::vector<Line> lines;
+    for (const auto& region : content.regions) {
+        if (!region.quad || region.text.empty()) continue;
+        const double top = region.quad->points[0].y;
+        const double bottom = region.quad->points[2].y;
+        if (!std::isfinite(top) || !std::isfinite(bottom)) continue;
+        auto key = loose_key(region.text);
+        if (!key.empty()) lines.push_back({&region, top, bottom, std::move(key)});
+    }
+    std::stable_sort(lines.begin(), lines.end(),
+                     [](const Line& a, const Line& b) { return a.top < b.top; });
+    for (std::size_t i = 0; i < lines.size(); ++i) {
+        const double center = (lines[i].top + lines[i].bottom) / 2.0;
+        if (!numbered && center > height * options.heading_band_fraction) break;
+        std::string joined;
+        for (std::size_t j = i; j < lines.size() && j < i + 3; ++j) {
+            if (j > i) {
+                const double gap = lines[j].top - lines[j - 1].bottom;
+                const double size = std::max(lines[j].bottom - lines[j].top,
+                                             lines[j - 1].bottom - lines[j - 1].top);
+                if (gap < -size || gap > 1.5 * size) break;
+                joined += ' ';
+            }
+            joined += lines[j].key;
+            for (const auto& key : wanted) {
+                if (key.size() < 12) continue;  // Too short to match loosely.
+                const std::size_t allowed = key.size() / 20;
+                const std::size_t longer = std::max(key.size(), joined.size());
+                const std::size_t shorter = std::min(key.size(), joined.size());
+                if (longer - shorter <= allowed && edit_distance(key, joined) <= allowed)
+                    return std::make_pair(
+                        text::SourceReference{target, content.revision,
+                                              lines[i].region->id, std::nullopt,
+                                              std::nullopt},
+                        trim(lines[i].region->text));
+            }
+            if (joined.size() > wanted.front().size() + 4) break;
+        }
+    }
+    return std::nullopt;
+}
+
 bool pages_complete(const NumberingSection& section, const Pages& pages) {
     for (PageIndex page = section.first; page < section.end; ++page)
         if (!page_supplied(page, pages)) return false;
@@ -745,6 +866,9 @@ Result<MappingResult> map(
     result.policy_id = kPolicyId;
     result.diagnostics = evidence.limitations;
     result.observations = observe(entries, evidence, options, valid.facts);
+    std::set<PageIndex> toc_pages;  // Pages holding TOC entries.
+    for (const auto& entry : entries)
+        for (const auto& source : entry.sources) toc_pages.insert(source.page_index);
     std::map<std::string, Anchors> anchor_map;
     for (const auto& section : evidence.sections)
         anchor_map.emplace(section.id,
@@ -961,16 +1085,24 @@ Result<MappingResult> map(
             const auto destination =
                 shifted(*entry.printed_reference->ordinal,
                         *anchors.strong, evidence.input.page_count);
+            std::optional<std::pair<text::SourceReference, std::string>> approximate;
             if (options.require_target_confirmation &&
                 confirming_sources(entry, *destination,
                                    result.observations).empty()) {
+                approximate = approximate_heading(entry, *destination,
+                                                  valid.pages, toc_pages, options);
+                if (!approximate) {
+                    mapped.reasons.push_back(
+                        "Offset has two anchors but target lacks confirmation");
+                    request_page(result, request_ids, *destination,
+                                 evidence.input.page_count,
+                                 "confirm-target-" + entry.id, 3,
+                                 options, valid.pages);
+                    continue;
+                }
                 mapped.reasons.push_back(
-                    "Offset has two anchors but target lacks confirmation");
-                request_page(result, request_ids, *destination,
-                             evidence.input.page_count,
-                             "confirm-target-" + entry.id, 3,
-                             options, valid.pages);
-                continue;
+                    "Target heading '" + approximate->second +
+                    "' matches the entry up to text-layer errors");
             }
             DestinationAlternative choice{
                 *destination, ResolutionMethod::InferredOffset,
@@ -981,6 +1113,7 @@ Result<MappingResult> map(
             append_anchor_sources(choice, mapped, anchors,
                                   *anchors.strong, *section,
                                   result.observations);
+            if (approximate) choice.sources.push_back(approximate->first);
             if (!anchors.outliers.empty()) {
                 std::string pages;
                 for (std::size_t i = 0; i < anchors.outliers.size() && i < 5; ++i)

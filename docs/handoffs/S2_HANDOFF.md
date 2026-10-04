@@ -38,3 +38,12 @@ Policy `s2-toc-detection-v2` adds decision S2-08: wide-gap title and reference p
 - **New pure tests:** the wide-gap positive case, bare right-column numbers next to complete left rows (no pairing), and a left row's own number blocking a cross-column pairing.
 - **Results:** standalone static and shared `detection_pure` passed 1/1 each, and the root suite passed 15/15, including the Engine regression `boundary_short_leaders.pdf` (both TOC pages, full 8-entry plan).
 - The installed S1+S2+S3+S4 acquired consumer, rebuilt against the reinstalled S2 package, still maps 3/3 and is outline-independent (candidate score 12.5, unchanged).
+
+## Revision v3 (4 October 2026, issue #13)
+
+Policy `s2-toc-detection-v3` (decision E-40) changes three rules:
+- **S2-09 Row density per visual line.** Fragments whose vertical centres agree within the title/reference pairing band count as one line. A section number, its title and its page number in three separate regions are one line, not three. The v2 count (fragments minus those merged into rows) stays an upper bound, and the new count applies only to pages whose aligned rows end in one or two reference columns, as a TOC's do. Pages with numbers in many columns (a reference list, a table) keep the v2 count.
+- **S2-10 Running head.** "Contents" with only a page number beside it ("xiv Contents", "Contents xv") is a running head: the page continues a TOC. It scores like a heading but is reported as "Contents running head (continued page)", and the candidate reason "Contents heading supports first page" needs a real heading.
+- **S2-11 Bridged middle page.** One rejected supplied page between two compatible candidate pages joins their candidate when it has at least `min_reference_rows` aligned rows in a compatible reference column and no index/glossary heading. Its page review stays `rejected`; the candidate's reasons name it.
+- **Reason:** a reprint's 5-page contents was split into two "competing" candidates around an undetected middle page, so no plan was made.
+- **Tests:** `detection_pure` adds the five-page fixture (three-region rows, running heads, heading on the first page only), a bridged sparse page and a counterexample whose numbers sit in another column.

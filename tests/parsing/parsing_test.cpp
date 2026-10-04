@@ -275,6 +275,73 @@ int main() {
     require(!parse(bad_evidence,
                    {page(30, 9, {{"Available .... 12", 40, 550, 100}})}),
             "missing candidate region is rejected");
+    // Issue #13: a reprint's text layer with OCR artifacts ("I" for 1, a
+    // stray space inside numbers), section numbers in their own column,
+    // chapter rows with their page number, hanging-indent wraps and the
+    // page's own "xiv Contents" running head.
+    const auto noisy_page = page(11, 12, {
+        {"xiv Contents", 40, 130, 40},
+        {"Chapter 1. Star Deaths and the Formation of Compact", 40, 330, 100},
+        {"Objects", 98, 150, 118}, {"1", 540, 548, 118},
+        {"1.1 What are Compact Objects?", 45, 200, 150}, {"3", 540, 548, 150},
+        {"Chapter 2. Cold Equation of State", 40, 250, 180}, {"17", 536, 548, 180},
+        {"2. I Thermodynamic Preliminaries", 45, 220, 210}, {"17", 536, 548, 210},
+        {"8.1 1", 45, 62, 240}, {"Hartree Analysis", 70, 180, 240}, {"21 1", 530, 548, 240},
+        {"8. I3", 45, 62, 270}, {"Unresolved Issues", 70, 200, 270}, {"I I9", 530, 548, 270},
+        {"Appendix G. Spherical Accretion Onto a Black Hole:", 40, 300, 300},
+        {"the Relativistic Equations", 98, 260, 318}, {"568", 536, 548, 318},
+        {"Part I Foundations", 40, 180, 350},
+        {"Introduction", 60, 150, 368}, {"5", 540, 548, 368},
+    });
+    const auto noisy = parse(candidate("toc-noisy", {{11, 12}}), {noisy_page});
+    require(noisy && noisy.value().entries.size() == 9 && noisy.value().unparsed.empty(),
+            "noisy text layer: every row becomes one entry");
+    const auto& n = noisy.value().entries;
+    require(n[0].title == "Chapter 1. Star Deaths and the Formation of Compact Objects" &&
+                n[0].printed_reference && n[0].printed_reference->ordinal == 1u,
+            "a hanging-indent continuation joins its chapter line");
+    require(n[1].hierarchy.kind == HierarchyKind::KnownParent &&
+                n[1].hierarchy.parent_id == n[0].id,
+            "1.1 is under 'Chapter 1.'");
+    require(n[2].title == "Chapter 2. Cold Equation of State" &&
+                n[2].printed_reference && n[2].printed_reference->ordinal == 17u,
+            "a chapter row keeps its page number");
+    require(n[3].title == "2.1 Thermodynamic Preliminaries" &&
+                n[3].hierarchy.parent_id == n[2].id && !n[3].diagnostics.empty(),
+            "'2. I' is read as section 2.1, with a diagnostic");
+    require(n[4].title == "8.11 Hartree Analysis" && n[4].printed_reference &&
+                n[4].printed_reference->literal == "21 1" &&
+                n[4].printed_reference->ordinal == 211u &&
+                !n[4].printed_reference->uncertain &&
+                !n[4].printed_reference->reasons.empty(),
+            "'8.1 1' and '21 1' are read as 8.11 and 211; the literal stays as printed");
+    require(n[5].title == "8.13 Unresolved Issues" && n[5].printed_reference &&
+                n[5].printed_reference->ordinal == 119u,
+            "'8. I3' and 'I I9' are read as 8.13 and 119");
+    require(n[6].title ==
+                    "Appendix G. Spherical Accretion Onto a Black Hole: the Relativistic Equations" &&
+                n[6].printed_reference && n[6].printed_reference->ordinal == 568u,
+            "a line ending in ':' continues on the next line");
+    require(n[7].title == "Part I Foundations" && !n[7].printed_reference &&
+                n[8].title == "Introduction" && n[8].printed_reference,
+            "a short heading does not swallow its indented first entry");
+    require(std::any_of(noisy.value().diagnostics.begin(), noisy.value().diagnostics.end(),
+                        [](const std::string& d) {
+                            return d.find("running head 'xiv Contents'") != std::string::npos;
+                        }),
+            "the TOC page's running head is ignored, not parsed as an entry");
+
+    // Counterexample: a real title starting with a number keeps its text and
+    // gets no section-number parent.
+    const auto numeric_title = parse(candidate("toc-numeric", {{12, 13}}),
+                                     {page(12, 13, {{"3 Basics", 40, 300, 100}, {"40", 536, 548, 100},
+                                                    {"3. 10 Things to Know", 40, 300, 130},
+                                                    {"45", 536, 548, 130}})});
+    require(numeric_title && numeric_title.value().entries.size() == 2 &&
+                numeric_title.value().entries[1].title == "3. 10 Things to Know" &&
+                numeric_title.value().entries[1].diagnostics.empty(),
+            "a title such as '3. 10 Things to Know' is not rewritten as section 3.10");
+
     ParsingOptions invalid;
     invalid.child_indent_min_points = 5;
     require(!parse(candidate("toc-invalid", {{30, 9}}), {}, invalid),

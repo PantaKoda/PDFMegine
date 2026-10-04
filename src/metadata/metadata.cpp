@@ -12,7 +12,7 @@
 namespace pdfbookmark::metadata {
 namespace {
 
-constexpr const char* kPolicyId = "s6-document-metadata-v2";
+constexpr const char* kPolicyId = "s6-document-metadata-v3";
 
 // ---------------------------------------------------------------- text utils
 
@@ -67,6 +67,31 @@ bool contains(const std::string& haystack, const char* needle) {
     return haystack.find(needle) != std::string::npos;
 }
 
+// Has letters and no lower-case ASCII letter.
+bool all_caps(const std::string& text) {
+    bool letters = false;
+    for (const unsigned char c : text) {
+        if (ascii_lower(c)) return false;
+        if (ascii_upper(c)) letters = true;
+    }
+    return letters;
+}
+
+// A line that cannot end a title or subtitle: it ends with a comma, colon
+// or hyphen, or with a word such as "of", "and" or "the".
+bool open_ending(const std::string& text) {
+    const std::string value = lower(trim(text));
+    if (value.empty()) return false;
+    const char last = value.back();
+    if (last == ',' || last == ':' || last == '-' || last == ';') return true;
+    const auto space = value.rfind(' ');
+    const std::string word = space == std::string::npos ? value : value.substr(space + 1);
+    static const std::set<std::string> open = {
+        "a", "an", "and", "as", "at", "by", "for", "from", "in", "into", "of",
+        "on", "or", "the", "to", "via", "with"};
+    return open.count(word) != 0;
+}
+
 // ---------------------------------------------------------------- lines
 
 struct Line {
@@ -85,6 +110,11 @@ struct Page {
     std::vector<std::string> reasons;
     // Title block found on this page, if any (indices into lines).
     std::vector<std::size_t> title_block;
+    std::vector<std::size_t> subtitle_lines;  // Lines read as the subtitle.
+    // A "Copyright ..." running head or foot on a page that is not a
+    // copyright page: weaker evidence, used only when no copyright or title
+    // page states that kind of year (S6-10).
+    std::optional<std::size_t> running_copyright;
     double prominence = 0;
 };
 
@@ -172,8 +202,29 @@ std::vector<Line> build_lines(const text::PageContent& content) {
 
 // ---------------------------------------------------------------- classifiers
 
+// "0 1983 by ...", "O 2004 Publisher": a copyright sign that the text layer
+// read as 0, O or C, at the start of a lower-cased line, with a year (1450
+// to 2100) and a holder after it. A bare 0 or O needs a space before the
+// year ("02139 Cambridge, MA" is a postal code); a figure axis "0 2000 4000"
+// has no holder.
+bool symbol_copyright(const std::string& l) {
+    static const std::regex pattern(
+        R"(^(?:(?:0|o)\s+|c\s*|\(c\)\s*)(1[4-9]\d\d|20\d\d|2100),?\s+[a-z])");
+    return std::regex_search(l, pattern);
+}
+
+// "... Copyright, Designs and Patents Act 1988", "the 1976 United States
+// Copyright Act": the year of a law, not of the book. A publisher named
+// ACT ("(C) 2010 ACT, Inc.") is not a law.
+bool cites_law(const std::string& l) {
+    static const std::regex pattern(
+        R"(\bact\s+(?:of\s+)?\d{4}\b|\b(?:copyright|patents?|rights|protection)\s+act\b)");
+    return std::regex_search(l, pattern);
+}
+
 bool copyright_line(const std::string& l) {
     return contains(l, "\xC2\xA9") || contains(l, "copyright") || contains(l, "(c) ") ||
+           symbol_copyright(l) ||
            contains(l, "all rights reserved") || contains(l, "isbn") ||
            contains(l, "first published") || contains(l, "printed in") ||
            contains(l, "library of congress") || contains(l, "published by") ||
@@ -206,15 +257,23 @@ bool name_stopword(const std::string& w) {
         "handbook", "guide", "manual", "principles", "programming", "performance",
         "high", "computer", "computational", "applications", "theory", "systems",
         "data", "analysis", "methods", "design", "advanced", "practical", "basic",
-        "first", "second", "third", "new", "revised", "published", "copyright",
+        "first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth",
+        "ninth", "tenth", "new", "revised", "published", "copyright",
         "printed", "library", "all", "rights", "reserved", "group", "foreword",
         "preface", "dedicated", "cover", "design", "international", "global"};
     return stop.count(w) != 0;
 }
 
 // "Georg Hager", "Craig E Rasmussen", "A. B. Smith", "GEORG HAGER".
+// A no-break space (U+00A0) as a plain space: "Marius\u00A0Iulian".
+std::string plain_spaces(std::string text) {
+    std::size_t at;
+    while ((at = text.find("\xC2\xA0")) != std::string::npos) text.replace(at, 2, " ");
+    return text;
+}
+
 bool name_like(const std::string& raw) {
-    const std::string text = squeeze(raw);
+    const std::string text = squeeze(plain_spaces(raw));
     std::vector<std::string> tokens;
     std::size_t start = 0;
     while (start < text.size()) {
@@ -225,16 +284,28 @@ bool name_like(const std::string& raw) {
         start = end + 1;
     }
     if (tokens.size() < 2 || tokens.size() > 5) return false;
+    // A soft hyphen (U+00AD) belongs to a typeset word or logo, not a name.
+    if (contains(text, "\xC2\xAD")) return false;
     std::size_t words = 0;
     const bool all_caps = std::all_of(text.begin(), text.end(), [](char c) {
         return !ascii_lower(static_cast<unsigned char>(c));
     });
+    // Small capitals split after each capital: "F IFTH E DITION".
+    for (std::size_t i = 0; i + 1 < tokens.size(); ++i)
+        if (tokens[i].size() == 1 && name_stopword(lower(key(tokens[i] + tokens[i + 1]))))
+            return false;
     for (const auto& token : tokens) {
-        if (name_stopword(lower(key(token)))) return false;
         const auto c0 = static_cast<unsigned char>(token[0]);
-        if (!(ascii_upper(c0) || c0 >= 0xC0)) return false;
-        // Initial: "A" or "A."
-        if (token.size() == 1 || (token.size() == 2 && token[1] == '.')) continue;
+        // A capital or a non-ASCII letter; U+0080..00BF (lead byte C2: "»",
+        // "©") and U+2000.. (lead byte E2) hold
+        // dashes, quotes and symbols (a dash before a name marks a quotation's source).
+        if (!(ascii_upper(c0) || (c0 >= 0xC3 && c0 != 0xE2))) return false;
+        // Initial: "B" or "A." (before the stop words: "A." is not "a"; a
+        // bare "A" still is, as in "A History").
+        if ((token.size() == 1 && token != "A") ||
+            (token.size() == 2 && token[1] == '.'))
+            continue;
+        if (name_stopword(lower(key(token)))) return false;
         std::size_t letters = 0;
         for (std::size_t i = 1; i < token.size(); ++i) {
             const auto c = static_cast<unsigned char>(token[i]);
@@ -258,7 +329,7 @@ ContributorRole organization_or(ContributorRole role, const std::string& name) {
 
 // Splits "Georg Hager and Gerhard Wellein" / "A, B, and C" into names.
 std::vector<std::string> split_names(const std::string& text) {
-    std::string s = " " + squeeze(text) + " ";
+    std::string s = " " + squeeze(plain_spaces(text)) + " ";
     for (const char* sep : {" and ", " & ", ";"}) {
         std::size_t pos;
         while ((pos = lower(s).find(sep)) != std::string::npos)
@@ -304,13 +375,27 @@ void find_title_block(Page& page, const MetadataOptions& options) {
         return lines[i].height >= min_height && !publisher_or_series_line(lines[i].lower) &&
                !contents_line(lines[i].lower);
     };
+    // A smaller line after a much wider gap than those inside the block
+    // starts a subtitle ("Black Holes, / White Dwarfs, / and Neutron Stars"
+    // then, set apart, "The Physics of Compact Objects").
+    double widest_gap = -1;  // Largest gap inside the block; none yet.
+    const auto set_apart = [&](std::size_t i, double gap) {
+        return widest_gap >= 0 && gap > 2.5 * std::max(widest_gap, 1.0) &&
+               lines[i].height < 0.9 * lines[anchor].height;
+    };
     std::size_t first = anchor, last = anchor;
-    while (first > 0 && eligible(first - 1) &&
-           lines[first].top - lines[first - 1].bottom <= 1.2 * lines[anchor].height)
+    while (first > 0 && eligible(first - 1)) {
+        const double gap = lines[first].top - lines[first - 1].bottom;
+        if (gap > 1.2 * lines[anchor].height || set_apart(first - 1, gap)) break;
+        widest_gap = std::max(widest_gap, gap);
         --first;
-    while (last + 1 < lines.size() && eligible(last + 1) &&
-           lines[last + 1].top - lines[last].bottom <= 1.2 * lines[anchor].height)
+    }
+    while (last + 1 < lines.size() && eligible(last + 1)) {
+        const double gap = lines[last + 1].top - lines[last].bottom;
+        if (gap > 1.2 * lines[anchor].height || set_apart(last + 1, gap)) break;
+        widest_gap = std::max(widest_gap, gap);
         ++last;
+    }
     for (std::size_t i = first; i <= last; ++i) page.title_block.push_back(i);
     double next = 0;
     for (std::size_t i = 0; i < lines.size(); ++i)
@@ -331,14 +416,29 @@ void classify(Page& page, PageIndex first_page, const MetadataOptions& options) 
                                                   ")");
         return;
     }
-    std::size_t copyright = 0;
-    for (const auto& line : page.lines) {
-        if (line.top < page.content->geometry.height_points * 0.3 && contents_line(line.lower)) {
+    std::size_t copyright = 0, in_margin = 0, margin_line = 0;
+    const double page_height = page.content->geometry.height_points;
+    for (std::size_t i = 0; i < page.lines.size(); ++i) {
+        const auto& line = page.lines[i];
+        if (line.top < page_height * 0.3 && contents_line(line.lower)) {
             page.role = PageRole::Contents;
             page.reasons.push_back("Contents heading");
             return;
         }
-        if (copyright_line(line.lower)) ++copyright;
+        if (copyright_line(line.lower)) {
+            ++copyright;
+            if (line.bottom < page_height * 0.1 || line.top > page_height * 0.9) {
+                ++in_margin;
+                margin_line = i;
+            }
+        }
+    }
+    // One "Copyright ..." line in the header or footer of a full page is a
+    // running head or foot, not a copyright page.
+    if (copyright == 1 && in_margin == 1 && page.lines.size() >= 15) {
+        copyright = 0;
+        page.running_copyright = margin_line;
+        page.reasons.push_back("Copyright line in the page margin only (running head or foot)");
     }
     if (copyright) {
         page.role = PageRole::Copyright;
@@ -404,6 +504,22 @@ Evidence evidence(const Line& line, std::string reason) {
 
 // ---------------------------------------------------------------- title
 
+std::vector<Contributor> parse_contributors(const std::string& text, ContributorRole role);
+
+// A line of personal names ("Joseph F. Boudreau and Eric S. Swanson").
+bool names_line(const std::string& text) {
+    return !parse_contributors(text, ContributorRole::Author).empty();
+}
+
+// "1 mathematical preliminaries", "chapter 3 ...": a chapter opening set
+// large, not the book's title (a title key, lower case).
+bool chapter_heading(const std::string& k) {
+    if (k.rfind("chapter ", 0) == 0) return true;
+    std::size_t digits = 0;
+    while (digits < k.size() && ascii_digit(static_cast<unsigned char>(k[digits]))) ++digits;
+    return digits >= 1 && digits <= 2 && digits < k.size() && k[digits] == ' ';
+}
+
 void resolve_title(std::vector<Page>& pages, const DocumentHints& hints,
                    const MetadataOptions& options, MetadataResult& out) {
     struct Found {
@@ -411,9 +527,8 @@ void resolve_title(std::vector<Page>& pages, const DocumentHints& hints,
         TitleValue value;
         std::vector<Evidence> evidence;
     };
-    std::map<std::string, std::vector<Found>> by_key;
-    std::vector<std::string> order;
-    for (const auto& page : pages) {
+    std::vector<Found> found;
+    for (auto& page : pages) {
         if (page.title_block.empty() ||
             (page.role != PageRole::Cover && page.role != PageRole::TitlePage))
             continue;
@@ -429,25 +544,66 @@ void resolve_title(std::vector<Page>& pages, const DocumentHints& hints,
             value.subtitle = value.title.substr(colon + 2);
             value.title = value.title.substr(0, colon);
         } else {
-            // A smaller, non-boilerplate, non-name line right below the block.
-            const std::size_t below = page.title_block.back() + 1;
+            // A smaller, non-boilerplate, non-name line right below the block,
+            // continued by lines in the same style ("THE PHYSICS OF" /
+            // "COMPACT OBJECTS").
+            std::size_t below = page.title_block.back() + 1;
             double h = 0;  // Largest title line.
             for (const auto i : page.title_block) h = std::max(h, page.lines[i].height);
             if (below < page.lines.size()) {
                 const auto& l = page.lines[below];
-                if (l.height >= 0.35 * h && l.height < options.title_block_ratio * h &&
+                if (l.height >= 0.35 * h && l.height < 0.9 * h &&
                     l.top - page.lines[below - 1].bottom <= 2 * h &&
-                    !publisher_or_series_line(l.lower) && !name_like(l.text) &&
+                    !publisher_or_series_line(l.lower) && !names_line(l.text) &&
                     key(l.text).size() > 3) {
-                    value.subtitle = l.text;
+                    std::string subtitle = l.text;
+                    page.subtitle_lines.push_back(below);
                     ev.push_back(evidence(l, "Subtitle below the title"));
+                    while (++below < page.lines.size()) {
+                        const auto& next = page.lines[below];
+                        const auto& previous = page.lines[below - 1];
+                        if (std::abs(next.height - l.height) > 0.15 * l.height ||
+                            next.top - previous.bottom > 1.2 * l.height ||
+                            publisher_or_series_line(next.lower) ||
+                            (names_line(next.text) && !open_ending(previous.text)))
+                            break;
+                        subtitle += " " + next.text;
+                        page.subtitle_lines.push_back(below);
+                        ev.push_back(evidence(next, "Subtitle continued"));
+                    }
+                    value.subtitle = squeeze(subtitle);
                 }
             }
         }
-        const std::string k = key(value.title);
-        if (k.empty()) continue;
+        found.push_back({&page, value, ev});
+    }
+    // A title block that ran on into its subtitle ("... and Neutron Stars
+    // The Physics of Compact Objects") agrees with a page that sets the
+    // subtitle apart: split it the same way.
+    for (auto& f : found) {
+        if (f.value.subtitle) continue;
+        const std::string whole = key(f.value.title);
+        for (const auto& g : found) {
+            if (!g.value.subtitle || key(g.value.title + " " + *g.value.subtitle) != whole)
+                continue;
+            const std::string head = key(g.value.title);
+            for (auto at = f.value.title.find(' '); at != std::string::npos;
+                 at = f.value.title.find(' ', at + 1))
+                if (key(f.value.title.substr(0, at)) == head) {
+                    f.value.subtitle = squeeze(f.value.title.substr(at));
+                    f.value.title = squeeze(f.value.title.substr(0, at));
+                    break;
+                }
+            break;
+        }
+    }
+    std::map<std::string, std::vector<Found>> by_key;
+    std::vector<std::string> order;
+    for (const auto& f : found) {
+        const std::string k = key(f.value.title);
+        if (k.empty() || chapter_heading(k)) continue;
         if (!by_key.count(k)) order.push_back(k);
-        by_key[k].push_back({&page, value, ev});
+        by_key[k].push_back(f);
     }
     if (by_key.empty()) {
         out.title.reasons.push_back("No prominent title block on a cover or title page");
@@ -489,10 +645,20 @@ void resolve_title(std::vector<Page>& pages, const DocumentHints& hints,
     if (agree || single_clear) {
         out.title.status = FieldStatus::Resolved;
         out.title.value = chosen->value;
+        auto& value = *out.title.value;
         // Keep a subtitle found on any agreeing page.
-        if (!out.title.value->subtitle)
+        if (!value.subtitle)
             for (const auto& f : best)
-                if (f.value.subtitle) { out.title.value->subtitle = f.value.subtitle; break; }
+                if (f.value.subtitle) { value.subtitle = f.value.subtitle; break; }
+        // Show the mixed-case reading of the same words over an all-caps one
+        // ("THE PHYSICS OF COMPACT OBJECTS" on the title page).
+        for (const auto& f : best) {
+            if (all_caps(value.title) && !all_caps(f.value.title))
+                value.title = f.value.title;
+            if (value.subtitle && f.value.subtitle && all_caps(*value.subtitle) &&
+                !all_caps(*f.value.subtitle) && key(*value.subtitle) == key(*f.value.subtitle))
+                value.subtitle = f.value.subtitle;
+        }
         for (const auto& f : best)
             out.title.evidence.insert(out.title.evidence.end(), f.evidence.begin(),
                                       f.evidence.end());
@@ -522,7 +688,43 @@ struct NameSource {
     std::vector<Contributor> names;
     bool explicit_phrase = false;  // "by ...", "edited by ...".
     std::vector<Evidence> evidence;
+    bool layout_block = false;     // Author block in title-page layout.
+    // Keys of the names given by a responsibility statement on a cover or
+    // title page; other name lines on that page are not confirmed by it.
+    std::set<std::string> stated;
 };
+
+// Letters and digits only, lower case: "W I LEY<soft hyphen>VCH" -> "wileyvch".
+std::string compact(const std::string& text) {
+    std::string out;
+    for (const char c : key(text))
+        if (c != ' ') out += c;
+    return out;
+}
+
+// A publisher's logo set as text: a short line whose letters, without
+// letter-spacing, soft hyphens and punctuation, start an imprint line on
+// the same page ("W I LEY-VCH" above "WILEY-VCH Verlag GmbH & Co. KGaA").
+bool imprint_logo(const Page& page, std::size_t index) {
+    std::string mark;
+    for (const char c : compact(page.lines[index].text))
+        if (static_cast<unsigned char>(c) < 0x80) mark += c;  // Drops U+00AD bytes.
+    if (mark.size() < 3 || page.lines[index].text.size() > 40) return false;
+    for (std::size_t i = 0; i < page.lines.size(); ++i)
+        if (i != index && publisher_or_series_line(page.lines[i].lower) &&
+            compact(page.lines[i].text).rfind(mark, 0) == 0)
+            return true;
+    return false;
+}
+
+// "Cornell University, Ithaca, New York": an affiliation under the names.
+bool affiliation_line(const std::string& l) {
+    for (const char* w : {"university", "institute", "college", "laboratory",
+                          "laboratories", "department", "school of", "observatory",
+                          "academy", "centre", "center for"})
+        if (contains(l, w)) return true;
+    return false;
+}
 
 // Parses a statement after "by"/"edited by"/"translated by" or a bare list.
 std::vector<Contributor> parse_contributors(const std::string& text, ContributorRole role) {
@@ -550,6 +752,16 @@ std::optional<std::pair<ContributorRole, std::string>> role_phrase(const std::st
     return std::nullopt;
 }
 
+// The page's title block reads as the resolved title (not, for example,
+// a quotation set large on a page of endorsements).
+bool shows_title(const Page& page, const Field<TitleValue>& title) {
+    if (page.title_block.empty() || !title.value) return false;
+    std::string text;
+    for (const auto i : page.title_block) text += " " + page.lines[i].text;
+    const std::string wanted = key(title.value->title);
+    return !wanted.empty() && key(text).rfind(wanted, 0) == 0;
+}
+
 void resolve_contributors(const std::vector<Page>& pages, const DocumentHints& hints,
                           MetadataResult& out) {
     std::vector<NameSource> sources;
@@ -557,27 +769,79 @@ void resolve_contributors(const std::vector<Page>& pages, const DocumentHints& h
     for (const auto& page : pages) {
         if (page.role != PageRole::Cover && page.role != PageRole::TitlePage) continue;
         NameSource src{&page, {}, false, {}};
+        const auto in = [](const std::vector<std::size_t>& list, std::size_t i) {
+            return std::find(list.begin(), list.end(), i) != list.end();
+        };
+        // Kind of each line: title (block or subtitle), name, imprint
+        // (publisher, logo), affiliation or other.
+        enum class Kind { Title, Name, Imprint, Affiliation, Other };
+        std::vector<Kind> kinds(page.lines.size(), Kind::Other);
         for (std::size_t i = 0; i < page.lines.size(); ++i) {
-            if (std::find(page.title_block.begin(), page.title_block.end(), i) !=
-                page.title_block.end())
-                continue;
             const auto& line = page.lines[i];
+            if (in(page.title_block, i) || in(page.subtitle_lines, i)) {
+                kinds[i] = Kind::Title;
+                continue;
+            }
             if (auto phrase = role_phrase(line.text)) {
                 auto names = parse_contributors(phrase->second, phrase->first);
                 if (!names.empty()) {
                     src.explicit_phrase = true;
                     src.evidence.push_back(evidence(line, "Responsibility statement"));
+                    for (const auto& n : names) src.stated.insert(key(n.name));
                     src.names.insert(src.names.end(), names.begin(), names.end());
+                    kinds[i] = Kind::Name;
                     continue;
                 }
             }
-            if (publisher_or_series_line(line.lower)) continue;
+            if (publisher_or_series_line(line.lower) || imprint_logo(page, i)) {
+                kinds[i] = Kind::Imprint;
+                continue;
+            }
+            if (affiliation_line(line.lower)) {
+                kinds[i] = Kind::Affiliation;
+                continue;
+            }
             auto names = parse_contributors(line.text, ContributorRole::Author);
             if (!names.empty()) {
                 src.evidence.push_back(evidence(line, "Name line on " +
                                                           std::string(role_name(page.role)) +
                                                           " page"));
                 src.names.insert(src.names.end(), names.begin(), names.end());
+                kinds[i] = Kind::Name;
+            }
+        }
+        // Title-page layout: the title (and subtitle), then one block of
+        // name lines, then an affiliation, the imprint or nothing. Most
+        // title pages list their authors so, without "by". (A cover alone
+        // is not enough: covers also print series editors and endorsers.)
+        if (!src.explicit_phrase && page.role == PageRole::TitlePage &&
+            shows_title(page, out.title)) {
+            std::size_t first = page.lines.size(), last = 0, blocks = 0;
+            // Name lines form one block when they follow each other closely
+            // in a similar size (a city line far below the author is not one).
+            const auto joins = [&](std::size_t i) {
+                const auto& a = page.lines[i - 1];
+                const auto& b = page.lines[i];
+                const double h = std::max(a.height, b.height);
+                return kinds[i - 1] == Kind::Name && b.top - a.bottom <= 1.5 * h &&
+                       std::min(a.height, b.height) >= 0.8 * h;
+            };
+            for (std::size_t i = 0; i < kinds.size(); ++i)
+                if (kinds[i] == Kind::Name) {
+                    if (i == 0 || !joins(i)) ++blocks;
+                    first = std::min(first, i);
+                    last = i;
+                }
+            const bool after_title = first < kinds.size() && first > 0 &&
+                                     kinds[first - 1] == Kind::Title;
+            const bool closed = last + 1 == kinds.size() ||
+                                kinds[last + 1] == Kind::Affiliation ||
+                                kinds[last + 1] == Kind::Imprint;
+            const std::size_t count = first < kinds.size() ? last - first + 1 : 0;
+            if (blocks == 1 && after_title && closed && count <= 4) {
+                src.layout_block = true;
+                for (auto& ev : src.evidence)
+                    ev.reason = "Name in the author block below the title on the title page";
             }
         }
         if (!src.names.empty()) sources.push_back(std::move(src));
@@ -626,7 +890,9 @@ void resolve_contributors(const std::vector<Page>& pages, const DocumentHints& h
     for (const auto& src : sources)
         for (const auto& n : src.names) {
             support[key(n.name)].insert(src.page->acquisition->page_index);
-            if (src.explicit_phrase &&
+            const bool stated = src.stated.empty() ? src.explicit_phrase
+                                                   : src.stated.count(key(n.name)) != 0;
+            if ((stated || src.layout_block) &&
                 (src.page->role == PageRole::TitlePage || src.page->role == PageRole::Cover))
                 explicit_name[key(n.name)] = true;
         }
@@ -659,8 +925,8 @@ void resolve_contributors(const std::vector<Page>& pages, const DocumentHints& h
         for (const auto& src : sources)
             for (const auto& ev : src.evidence) out.contributors.evidence.push_back(ev);
         out.contributors.reasons.push_back(
-            "Names confirmed on two or more pages or by an explicit responsibility "
-            "statement on a title/cover page");
+            "Names confirmed on two or more pages, by an explicit responsibility "
+            "statement on a title/cover page, or by the author block of a title page");
         std::size_t dropped = 0;
         for (const auto& s : support)
             if (!taken.count(s.first)) ++dropped;
@@ -813,15 +1079,75 @@ std::vector<int> years_in(const std::string& text, const MetadataOptions& option
     return out;
 }
 
+// True when each copyright statement names one year and statements with
+// different years name different holders ("by John Wiley & Sons" and
+// "WILEY-VCH Verlag"). One holder with several years ("© 2005, 2012
+// Pearson") is an edition history and stays ambiguous.
+bool separate_holders(const std::vector<YearHit>& hits, const MetadataOptions& options) {
+    // The holder's words: the statement without the sign (also when it
+    // touches the year, "(C)2005"), years, "copyright", "by", "all rights
+    // reserved", and company and joining words ("Inc.", "& Co.", "as").
+    static const std::set<std::string> skip = {
+        "copyright", "c", "o", "by", "all", "rights", "reserved", "inc", "ltd", "llc",
+        "co", "corp", "gmbh", "kgaa", "ag", "sa", "plc", "the", "and", "of", "as",
+        "publishing", "published", "publisher", "publishers"};
+    std::map<int, std::vector<std::set<std::string>>> holders;  // Year -> holders.
+    for (const auto& h : hits) {
+        const std::string l = lower(h.value.statement);
+        if (years_in(l, options).size() != 1) return false;
+        // An edition history ("First edition (C) 2005 ...") is not a reprint.
+        if (h.edition || contains(l, "edition")) return false;
+        std::string plain = h.value.statement;
+        for (std::size_t at; (at = plain.find("\xC2\xA9")) != std::string::npos;)
+            plain.replace(at, 2, " ");
+        const std::string k = key(plain);
+        std::set<std::string> words;
+        for (std::size_t start = 0; start < k.size();) {
+            const auto end = std::min(k.find(' ', start), k.size());
+            const std::string w = k.substr(start, end - start);
+            start = end + 1;
+            if (w.size() < 2 || ascii_digit(static_cast<unsigned char>(w[0])) || skip.count(w))
+                continue;
+            words.insert(w);
+        }
+        if (words.empty()) return false;
+        holders[h.value.year].push_back(std::move(words));
+    }
+    // Holders of different years are the same when at least half of the
+    // smaller one's words are shared ("Pearson Education" and "Pearson
+    // Education, publishing as Addison-Wesley"; but not "John Wiley & Sons"
+    // and "WILEY-VCH Verlag Weinheim").
+    const auto same = [](const std::set<std::string>& a, const std::set<std::string>& b) {
+        std::size_t shared = 0;
+        for (const auto& w : a) shared += b.count(w);
+        return 2 * shared >= std::min(a.size(), b.size());
+    };
+    for (auto a = holders.begin(); a != holders.end(); ++a)
+        for (auto b = std::next(a); b != holders.end(); ++b)
+            for (const auto& x : a->second)
+                for (const auto& y : b->second)
+                    if (same(x, y)) return false;
+    return true;
+}
+
 void resolve_years(const std::vector<Page>& pages, const MetadataOptions& options,
                    MetadataResult& out) {
     std::vector<YearHit> publication, copyright, printing;
+    std::vector<YearHit> running_publication, running_copyright, running_printing;
     for (const auto& page : pages) {
         const bool title_page = page.role == PageRole::TitlePage || page.role == PageRole::Cover;
-        if (page.role != PageRole::Copyright && !title_page) continue;
-        for (const auto& line : page.lines) {
+        const bool running = page.role != PageRole::Copyright && !title_page &&
+                             page.running_copyright.has_value();
+        if (page.role != PageRole::Copyright && !title_page && !running) continue;
+        auto& publication_hits = running ? running_publication : publication;
+        auto& copyright_hits = running ? running_copyright : copyright;
+        auto& printing_hits = running ? running_printing : printing;
+        for (std::size_t index = 0; index < page.lines.size(); ++index) {
+            if (running && index != *page.running_copyright) continue;
+            const auto& line = page.lines[index];
             const std::string& l = line.lower;
             if (isbn_line(line)) continue;  // ISBN digits are not years.
+            if (cites_law(l)) continue;
             const auto ys = years_in(l, options);
             if (ys.empty()) continue;
             std::optional<std::uint32_t> edition;
@@ -836,15 +1162,30 @@ void resolve_years(const std::vector<Page>& pages, const MetadataOptions& option
             };
             if (contains(l, "reprint") || contains(l, "printing") ||
                 (contains(l, "printed") && !contains(l, "published")))
-                push(printing, YearKind::Printing, "Printing statement");
+                push(printing_hits, YearKind::Printing, "Printing statement");
             else if (contains(l, "published") || contains(l, "publication"))
-                push(publication, YearKind::Publication, "Publication statement");
+                push(publication_hits, YearKind::Publication, "Publication statement");
             else if (contains(l, "\xC2\xA9") || contains(l, "copyright") || contains(l, "(c)"))
-                push(copyright, YearKind::Copyright, "Copyright statement");
+                push(copyright_hits, YearKind::Copyright, "Copyright statement");
+            else if (symbol_copyright(l))
+                push(copyright_hits, YearKind::Copyright,
+                     "Copyright statement (the sign read as 0, O or C)");
             else if (title_page && key(line.text).size() == 4)
-                push(publication, YearKind::Publication, "Imprint year on the title page");
+                push(publication_hits, YearKind::Publication, "Imprint year on the title page");
         }
     }
+    // A running head or foot counts only for a kind of year that no
+    // copyright or title page states.
+    const auto fallback = [](std::vector<YearHit>& primary, std::vector<YearHit>& running) {
+        if (!primary.empty()) return;
+        for (auto& h : running) {
+            h.evidence.reason += ", in a running head or foot (no copyright page states one)";
+            primary.push_back(std::move(h));
+        }
+    };
+    fallback(publication, running_publication);
+    fallback(copyright, running_copyright);
+    fallback(printing, running_printing);
     // Copyright year.
     std::set<int> cy;
     for (const auto& h : copyright) cy.insert(h.value.year);
@@ -857,6 +1198,28 @@ void resolve_years(const std::vector<Page>& pages, const MetadataOptions& option
         for (const auto& h : copyright) out.copyright_year.evidence.push_back(h.evidence);
         out.copyright_year.reasons.push_back("Single copyright year");
         out.copyright_year.alternatives.clear();
+    } else if (cy.size() > 1 &&
+               !(out.edition.value && out.edition.value->ordinal &&
+                 *out.edition.value->ordinal > 1) &&
+               separate_holders(copyright, options)) {
+        // "© 1983 by A" and "© 2004 B": the original copyright and a reprint
+        // or licensed edition. The earliest is the work's copyright.
+        const int earliest = *cy.begin();
+        out.copyright_year.status = FieldStatus::Resolved;
+        out.copyright_year.alternatives.clear();
+        for (const auto& h : copyright) {
+            if (h.value.year == earliest) {
+                if (!out.copyright_year.value) out.copyright_year.value = h.value;
+                out.copyright_year.evidence.push_back(h.evidence);
+            } else {
+                out.copyright_year.alternatives.push_back(
+                    {h.value, 0.5, {h.evidence},
+                     {"Later copyright by another holder (reprint, licensed or new edition)"}});
+            }
+        }
+        out.copyright_year.reasons.push_back(
+            "Earliest of " + std::to_string(cy.size()) +
+            " copyright years stated by different holders: the original copyright");
     } else if (cy.size() > 1) {
         out.copyright_year.status = FieldStatus::Ambiguous;
         out.copyright_year.reasons.push_back(
