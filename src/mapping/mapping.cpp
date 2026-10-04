@@ -713,10 +713,12 @@ std::size_t edit_distance(const std::string& a, const std::string& b) {
 // only by text-layer errors: one wrong letter in 20 ("Protolype"), I/1,
 // punctuation, or a chapter/appendix label the page sets apart or omits.
 // Only for targets that two agreeing anchors already give; exact headings
-// remain the only heading anchors.
+// remain the only heading anchors. A page holding TOC entries never
+// confirms: its row for the entry says nothing about where the entry starts.
 std::optional<std::pair<text::SourceReference, std::string>> approximate_heading(
     const parsing::TocEntry& entry, PageIndex target, const Pages& pages,
-    const MappingOptions& options) {
+    const std::set<PageIndex>& toc_pages, const MappingOptions& options) {
+    if (toc_pages.count(target)) return std::nullopt;
     const auto found = pages.find(target);
     if (found == pages.end() || !found->second->selected) return std::nullopt;
     const auto& content = *found->second->selected;
@@ -864,6 +866,9 @@ Result<MappingResult> map(
     result.policy_id = kPolicyId;
     result.diagnostics = evidence.limitations;
     result.observations = observe(entries, evidence, options, valid.facts);
+    std::set<PageIndex> toc_pages;  // Pages holding TOC entries.
+    for (const auto& entry : entries)
+        for (const auto& source : entry.sources) toc_pages.insert(source.page_index);
     std::map<std::string, Anchors> anchor_map;
     for (const auto& section : evidence.sections)
         anchor_map.emplace(section.id,
@@ -1085,7 +1090,7 @@ Result<MappingResult> map(
                 confirming_sources(entry, *destination,
                                    result.observations).empty()) {
                 approximate = approximate_heading(entry, *destination,
-                                                  valid.pages, options);
+                                                  valid.pages, toc_pages, options);
                 if (!approximate) {
                     mapped.reasons.push_back(
                         "Offset has two anchors but target lacks confirmation");

@@ -203,17 +203,22 @@ std::vector<Line> build_lines(const text::PageContent& content) {
 // ---------------------------------------------------------------- classifiers
 
 // "0 1983 by ...", "O 2004 Publisher": a copyright sign that the text layer
-// read as 0, O or C, at the start of a lower-cased line, with a year and a
-// holder after it ("0 2000 4000 6000" on a figure axis is not one).
+// read as 0, O or C, at the start of a lower-cased line, with a year (1450
+// to 2100) and a holder after it. A bare 0 or O needs a space before the
+// year ("02139 Cambridge, MA" is a postal code); a figure axis "0 2000 4000"
+// has no holder.
 bool symbol_copyright(const std::string& l) {
-    static const std::regex pattern(R"(^(?:0|o|c|\(c\))\s*\d{4},?\s+[a-z])");
+    static const std::regex pattern(
+        R"(^(?:(?:0|o)\s+|c\s*|\(c\)\s*)(1[4-9]\d\d|20\d\d|2100),?\s+[a-z])");
     return std::regex_search(l, pattern);
 }
 
 // "... Copyright, Designs and Patents Act 1988", "the 1976 United States
-// Copyright Act": the year of a law, not of the book.
+// Copyright Act": the year of a law, not of the book. A publisher named
+// ACT ("(C) 2010 ACT, Inc.") is not a law.
 bool cites_law(const std::string& l) {
-    static const std::regex pattern(R"(\bact\b)");
+    static const std::regex pattern(
+        R"(\bact\s+(?:of\s+)?\d{4}\b|\b(?:copyright|patents?|rights|protection)\s+act\b)");
     return std::regex_search(l, pattern);
 }
 
@@ -1079,30 +1084,49 @@ std::vector<int> years_in(const std::string& text, const MetadataOptions& option
 // "WILEY-VCH Verlag"). One holder with several years ("© 2005, 2012
 // Pearson") is an edition history and stays ambiguous.
 bool separate_holders(const std::vector<YearHit>& hits, const MetadataOptions& options) {
-    // The holder is the statement without the sign, its year and the words
-    // "copyright", "by" and "all rights reserved".
+    // The holder's words: the statement without the sign (also when it
+    // touches the year, "(C)2005"), years, "copyright", "by", "all rights
+    // reserved", and company and joining words ("Inc.", "& Co.", "as").
     static const std::set<std::string> skip = {
-        "copyright", "\xC2\xA9", "c", "o", "by", "all", "rights", "reserved"};
-    std::map<int, std::set<std::string>> holders;  // Year -> holders.
+        "copyright", "c", "o", "by", "all", "rights", "reserved", "inc", "ltd", "llc",
+        "co", "corp", "gmbh", "kgaa", "ag", "sa", "plc", "the", "and", "of", "as",
+        "publishing", "published", "publisher", "publishers"};
+    std::map<int, std::vector<std::set<std::string>>> holders;  // Year -> holders.
     for (const auto& h : hits) {
-        if (years_in(lower(h.value.statement), options).size() != 1) return false;
-        const std::string k = key(h.value.statement);
-        std::string holder;
+        const std::string l = lower(h.value.statement);
+        if (years_in(l, options).size() != 1) return false;
+        // An edition history ("First edition (C) 2005 ...") is not a reprint.
+        if (h.edition || contains(l, "edition")) return false;
+        std::string plain = h.value.statement;
+        for (std::size_t at; (at = plain.find("\xC2\xA9")) != std::string::npos;)
+            plain.replace(at, 2, " ");
+        const std::string k = key(plain);
+        std::set<std::string> words;
         for (std::size_t start = 0; start < k.size();) {
             const auto end = std::min(k.find(' ', start), k.size());
             const std::string w = k.substr(start, end - start);
             start = end + 1;
-            if (w.empty() || ascii_digit(static_cast<unsigned char>(w[0])) || skip.count(w))
+            if (w.size() < 2 || ascii_digit(static_cast<unsigned char>(w[0])) || skip.count(w))
                 continue;
-            holder += (holder.empty() ? "" : " ") + w;
+            words.insert(w);
         }
-        if (holder.empty()) return false;
-        holders[h.value.year].insert(holder);
+        if (words.empty()) return false;
+        holders[h.value.year].push_back(std::move(words));
     }
+    // Holders of different years are the same when at least half of the
+    // smaller one's words are shared ("Pearson Education" and "Pearson
+    // Education, publishing as Addison-Wesley"; but not "John Wiley & Sons"
+    // and "WILEY-VCH Verlag Weinheim").
+    const auto same = [](const std::set<std::string>& a, const std::set<std::string>& b) {
+        std::size_t shared = 0;
+        for (const auto& w : a) shared += b.count(w);
+        return 2 * shared >= std::min(a.size(), b.size());
+    };
     for (auto a = holders.begin(); a != holders.end(); ++a)
         for (auto b = std::next(a); b != holders.end(); ++b)
-            for (const auto& name : a->second)
-                if (b->second.count(name)) return false;
+            for (const auto& x : a->second)
+                for (const auto& y : b->second)
+                    if (same(x, y)) return false;
     return true;
 }
 
@@ -1174,7 +1198,10 @@ void resolve_years(const std::vector<Page>& pages, const MetadataOptions& option
         for (const auto& h : copyright) out.copyright_year.evidence.push_back(h.evidence);
         out.copyright_year.reasons.push_back("Single copyright year");
         out.copyright_year.alternatives.clear();
-    } else if (cy.size() > 1 && separate_holders(copyright, options)) {
+    } else if (cy.size() > 1 &&
+               !(out.edition.value && out.edition.value->ordinal &&
+                 *out.edition.value->ordinal > 1) &&
+               separate_holders(copyright, options)) {
         // "© 1983 by A" and "© 2004 B": the original copyright and a reprint
         // or licensed edition. The earliest is the work's copyright.
         const int earliest = *cy.begin();

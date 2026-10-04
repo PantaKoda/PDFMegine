@@ -172,21 +172,22 @@ std::optional<std::string> ocr_number(const std::string& literal) {
 }
 
 // A leading section number with the same artifacts: "2. I" -> "2.1",
-// "8. I3" -> "8.13", "8.1 1" -> "8.11" (the last only when `alone`, i.e. the
-// number is its own region, since "2.1 1 Title" could be read either way).
+// "8. I3" -> "8.13", "8.1 1" -> "8.11". Inside a title (not `alone`, i.e.
+// not its own region) a letter I/l must be among the repairs: a stray space
+// alone is not enough, since "3. 10 Things to Know" is a real title.
 // Returns the corrected number and the length it replaces, or nothing.
 std::optional<std::pair<std::string, std::size_t>> ocr_section_number(
     const std::string& text, bool alone) {
     // A leading "I" or "l" for 1, possibly split off: "I8.6", "I 8.6".
     std::size_t start = 0;
     std::string fixed;
-    bool repaired = false;
+    bool repaired = false, letter = false;
     if (!text.empty() && (text[0] == 'I' || text[0] == 'l')) {
         start = text.size() > 1 && text[1] == ' ' ? 2 : 1;
         if (start >= text.size() || !digit(static_cast<unsigned char>(text[start])))
             return std::nullopt;
         fixed = "1";
-        repaired = true;
+        repaired = letter = true;
     }
     std::size_t i = start;
     while (i < text.size() && digit(static_cast<unsigned char>(text[i]))) ++i;
@@ -200,7 +201,7 @@ std::optional<std::pair<std::string, std::size_t>> ocr_section_number(
     while (j < text.size() && part < 2) {
         const char c = text[j];
         if (digit(static_cast<unsigned char>(c))) fixed += c;
-        else if (c == 'I' || c == 'l') { fixed += '1'; repaired = true; }
+        else if (c == 'I' || c == 'l') { fixed += '1'; repaired = letter = true; }
         else if (c == ' ' && alone && part == 1 && j + 1 < text.size() &&
                  digit(static_cast<unsigned char>(text[j + 1])) &&
                  (j + 2 == text.size() || text[j + 2] == ' ')) {
@@ -211,7 +212,7 @@ std::optional<std::pair<std::string, std::size_t>> ocr_section_number(
         ++part;
         ++j;
     }
-    if (part == 0 || !repaired) return std::nullopt;
+    if (part == 0 || !repaired || (!alone && !letter)) return std::nullopt;
     if (j < text.size() && text[j] != ' ') return std::nullopt;  // "1.2 3D".
     return std::make_pair(fixed, j);
 }

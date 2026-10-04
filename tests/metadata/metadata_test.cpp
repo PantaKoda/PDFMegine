@@ -347,6 +347,31 @@ int main() {
             "a running foot gives the publication year no copyright page states, "
             "not the copyright year the copyright page states");
 
+    // Counterexamples from review: one holder with several years, or an
+    // edition history, stays ambiguous; it is not "the earliest holder".
+    const auto copyright_of = [&](const std::vector<L>& lines) {
+        return extract({page(3, lines)}).value().copyright_year;
+    };
+    require(copyright_of({{"Copyright \xC2\xA9" "2005 Pearson Education", 100, 8},
+                          {"Copyright \xC2\xA9" "2012 Pearson Education", 115, 8}})
+                    .status == FieldStatus::Ambiguous,
+            "a sign touching the year does not make one holder two");
+    require(copyright_of({{"\xC2\xA9 2005 Pearson Education, Inc.", 100, 8},
+                          {"\xC2\xA9 2012 by Pearson Education, Inc., publishing as Addison-Wesley",
+                           115, 8}})
+                    .status == FieldStatus::Ambiguous,
+            "the same holder with extra words is one holder");
+    require(copyright_of({{"First edition \xC2\xA9 2005 Morgan Kaufmann", 100, 8},
+                          {"\xC2\xA9 2012 Elsevier Inc.", 115, 8}})
+                    .status == FieldStatus::Ambiguous,
+            "an edition history is not an original copyright and a reprint");
+    require(copyright_of({{"\xC2\xA9 2010 ACT, Inc.", 100, 8}}).value->year == 2010,
+            "a publisher named ACT is not a law citation");
+    const auto postal = extract({page(1, {{"Some Title Here", 100, 30},
+                                          {"02139 Cambridge, MA", 300, 9}})});
+    require(postal && postal.value().pages[0].role != PageRole::Copyright,
+            "a postal code '02139' is not a copyright sign and a year");
+
     // Counterexamples found on real books: a law's year is not a copyright
     // year, a figure axis "0 2000 4000" is not a copyright sign and year.
     const auto legal = extract({page(4, {

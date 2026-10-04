@@ -146,6 +146,17 @@ int main() {
                 "a heading with text-layer errors confirms the offset target");
     require(loose[3].status == MappingStatus::Unresolved,
             "a short title is never matched loosely ('Pulsers' is not 'Pulsars')");
+    // Counterexample: a target that is the TOC page itself is never
+    // confirmed by the TOC row naming the entry.
+    auto on_toc = entry("e9", "8.11 Hartree Analysis of Nuclear Matter", "9",
+                        NumberingStyle::Decimal, 9);
+    on_toc.sources = {{20, 22, 0, std::nullopt, std::nullopt}};
+    auto toc_target = base;
+    toc_target.pages = {page(12, "1"), page(14, "3"),
+                        page(20, {}, "8.11 Hartree Analysis of Nuclear Matter")};
+    const auto toc_result = map({on_toc}, toc_target);
+    require(toc_result && toc_result.value().entries[0].status != MappingStatus::Resolved,
+            "the TOC page's own row never confirms an offset target");
 
     auto insufficient = base;
     insufficient.pages = {page(12, "1")};

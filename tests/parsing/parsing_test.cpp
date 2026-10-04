@@ -331,6 +331,17 @@ int main() {
                         }),
             "the TOC page's running head is ignored, not parsed as an entry");
 
+    // Counterexample: a real title starting with a number keeps its text and
+    // gets no section-number parent.
+    const auto numeric_title = parse(candidate("toc-numeric", {{12, 13}}),
+                                     {page(12, 13, {{"3 Basics", 40, 300, 100}, {"40", 536, 548, 100},
+                                                    {"3. 10 Things to Know", 40, 300, 130},
+                                                    {"45", 536, 548, 130}})});
+    require(numeric_title && numeric_title.value().entries.size() == 2 &&
+                numeric_title.value().entries[1].title == "3. 10 Things to Know" &&
+                numeric_title.value().entries[1].diagnostics.empty(),
+            "a title such as '3. 10 Things to Know' is not rewritten as section 3.10");
+
     ParsingOptions invalid;
     invalid.child_indent_min_points = 5;
     require(!parse(candidate("toc-invalid", {{30, 9}}), {}, invalid),
